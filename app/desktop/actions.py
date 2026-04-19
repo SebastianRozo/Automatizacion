@@ -4,7 +4,7 @@ import time
 from app.config.settings import TNS_USERNAME, TNS_PASSWORD,TNS_OFFICE
 
 
-#SCRIPT PARA MANEJAR TNS
+#SCRIPT PARA MANEJAR TNS FUNCIONANDO 
 def entrar_tns():
     os.startfile(r"C:\Users\Sebas\OneDrive\Escritorio\Portal TNS.appref-ms")
     time.sleep(5)
