@@ -31,6 +31,9 @@ SELECT_PRODUCT = "cpContenido_WucFiltrosPlanilla_DdlProducto"
 SELECT_TYPE_OF_SALE= "cpContenido_WucFiltrosPlanilla_DdlTipoVenta"
 START_DATE= "cpContenido_WucFiltrosPlanilla_LblTxtFechaInicial"
 END_DATE= "cpContenido_WucFiltrosPlanilla_LblTxtFechaFinal"
+BUTTON_CONFIRMAR_GENERACION = "cpContenido_WucFiltrosPlanilla_BtnAceptar"
+TABLE_PLANILLA = "cpContenido_WucFiltrosPlanilla_WucCargaInicialPlanilla_GrvRegistros"
+
 
 BUTTON_CONSULTAR_PLANILLA = "a[href='ConsultarPlanilla.aspx']"
 SELECT_ASESOR="cpContenido_WucConsultarPlanilla_DdlCodActivacion"

@@ -5,6 +5,40 @@ from app.config.settings import TNS_USERNAME, TNS_PASSWORD,TNS_OFFICE
 
 
 #SCRIPT PARA MANEJAR TNS FUNCIONANDO 
+def obtener_texto_celda(celda):
+    try:
+        valor = celda.iface_value.CurrentValue
+        if valor and valor != celda.window_text():
+            return valor.strip()
+    except Exception:
+        pass
+
+    try:
+        valor = celda.legacy_properties().get("Value", "")
+        if valor and valor != celda.window_text():
+            return valor.strip()
+    except Exception:
+        pass
+
+    try:
+        textos = [texto.strip() for texto in celda.texts() if texto and texto.strip()]
+        textos = [texto for texto in textos if texto != celda.window_text()]
+        if textos:
+            return textos[0]
+    except Exception:
+        pass
+
+    try:
+        for hijo in celda.children():
+            texto = hijo.window_text().strip()
+            if texto:
+                return texto
+    except Exception:
+        pass
+
+    return celda.window_text().strip()
+
+
 def entrar_tns():
     os.startfile(r"C:\Users\Sebas\OneDrive\Escritorio\Portal TNS.appref-ms")
     time.sleep(5)
@@ -61,7 +95,26 @@ def manejar_tns(item: dict):
     fila = ventana.child_window(title="Fila 1", control_type="ListItem")
     fila.double_click_input()
     time.sleep(2)
-    print(ventana.print_control_identifiers())
-    tipo_plan = "valor_extraido_de_tns"
+    
+    #print(ventana.print_control_identifiers())
+    # Obtener el valor visible de la celda y no el nombre accesible del DataItem.
+    tabla = ventana.child_window(auto_id="GridControlDetalle", control_type="Table")
+    celda_descripcion = tabla.child_window(
+        title="DESCRIPCION fila 1",
+        control_type="DataItem"
+    )
+    descripcion = obtener_texto_celda(celda_descripcion)
+    descripcion = descripcion.strip().upper()
+    if "PORTABILIDAD" in descripcion:
+        tipo_plan= "portabilidad"
+    elif "LINEA NUEVA" in descripcion:
+        tipo_plan= "linea_nueva"
+    elif "MIGRACION UPGRADE" in descripcion:
+        tipo_plan= "upgrade"
+    else:
+        tipo_plan= "otro"
+    print(tipo_plan)
+
+    item["descripcion_tns"] = descripcion
     item["tipo_plan"] = tipo_plan
     return item

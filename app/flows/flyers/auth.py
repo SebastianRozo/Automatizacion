@@ -50,7 +50,7 @@ def login() -> None:
         submit_credentials(driver, POLIEDRO_USERNAME, POLIEDRO_PASSWORD)
         token = input("Ingrese el token: ")
         submit_token(driver, token)
-        #downloadFlyers(driver)
+        downloadFlyers(driver)
         time.sleep(3)
         go_to_spreadsheets(driver)
         time.sleep(25)
@@ -84,7 +84,7 @@ def submit_token(driver, token: str) -> None:
 
 
 def getBeforeDay() -> str:
-    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    yesterday = datetime.date.today() - datetime.timedelta(days=2)
     return yesterday
 
 # Esto limpia el valor del dinero para dejarlo solo como numero entero.
