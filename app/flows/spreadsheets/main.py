@@ -1,339 +1,240 @@
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 import time
 from datetime import datetime
-from urllib.parse import urljoin
-from app.browser.actions import (
-    click,
-    open_url,
-    type_text,
-    wait_present,
-    selectInSelect,
-)
-from app.desktop.actions import manejar_tns
+
+from app.browser.actions import click, enfocar_chrome, wait_present
+from app.desktop.actions import entrar_tns, ingresar_a_cartera, manejar_tns
 from app.config.selectors import (
-    BUTTON_MENU,
-    BUTTON_SPREADSHEETS,
-    SELECT_SPREADSHEETS,
-    GO_TO_SPREADHEETS,
-    GENERATE_SPREADSHEETS,
-    BUTTON_CONFIRMAR_GENERACION,
-    SELECT_USER_NAME,
-    SELECT_OFFICE,
+    BUTTON_CONTINUAR,
+    BUTTON_GENERAR_PLANILLA,
+    BUTTON_NOT_SPREADSHEET,
+    BUTTON_SIMULAR,
     SELECT_GENERATION_TYPE,
-    SELECT_SPREADSHEET_TYPE,
-    SELECT_SPREADSHEET_IN_SPREADSHEET,
-    SELECT_PRODUCT,
-    SELECT_TYPE_OF_SALE,
-    TABLE_PLANILLA
+    SELECT_USER_NAME,
+    TABLE_PLANILLA,
+    VALOR_TOTAL_TABLA_PLANILLA
 )
+from app.flows.spreadsheets.helpers import (
+    normalizar_dinero,
+    obtener_valor_select,
+    obtener_valores_producto,
+)
+from app.flows.spreadsheets.planilla_actions import (
+    check_first_checkbox,
+    contar_portabilidades_restantes,
+    get_checkbox_por_usuario,
+    llenar_formulario_planillado,
+    obtener_filas_planilla,
+    obtener_porta_antigua,
+    validate_money,
+)
+from app.storage.not_found_users import guardar_usuarios_no_encontrados
 
 
-def limpiar_texto(valor: str) -> str:
-    valor = valor.replace("\xa0", " ").strip()
-    return "" if valor == " " else valor
+def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = False) -> None:
+    enfocar_chrome(driver)
+    click(driver, By.ID, BUTTON_SIMULAR, timeout=10)
+    time.sleep(espera)
+    total = wait_present(driver, By.ID, VALOR_TOTAL_TABLA_PLANILLA, timeout=10)
+    valor_producto = normalizar_dinero(total.text)
 
+    click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
+    time.sleep(espera)
+    if ajustar_zoom:
+        driver.execute_script("""
+                var style = document.createElement('style');
+                style.innerHTML = `
+                    @media print {
+                        body {
+                            zoom: 50%;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            """)
+    for _ in range(3):
+        driver.execute_script("window.print();")
+        time.sleep(2)
+    time.sleep(espera)
+    click(driver, By.ID, BUTTON_CONTINUAR, timeout=10)
+    time.sleep(espera)
+    return valor_producto
 
-def normalizar_dinero(valor: str) -> int:
-    solo_digitos = "".join(c for c in valor if c.isdigit())
-    return int(solo_digitos) if solo_digitos else 0
-
-
-def obtener_filas_planilla(driver) -> list[dict]:
-    filas = driver.find_elements(
-        By.CSS_SELECTOR,
-        "#cpContenido_WucConsultarPlanilla_WucConsultarDatosPlanilla_GrvResultadosEstaticos tbody tr"
-    )
-    resultados = []
-    for fila in filas[1:]:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-        resultados.append({
-            "usuario": limpiar_texto(columnas[3].text),
-            "fecha_activacion": limpiar_texto(columnas[7].text),
-            "vr_total_planilla": normalizar_dinero(columnas[11].text),
-        })
-    return resultados
-
-def get_checkbox_por_usuario(driver, usuario_objetivo: str):
-    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
-    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
-    for fila in filas:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-        usuario = limpiar_texto(columnas[4].text)
-        checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-        if usuario == usuario_objetivo:
-            return checkbox
-    return None
-
-def validate_money(driver,dinero_volante:int)->dict:
-    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
-    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
-    suma_planilla = 0
-    filas_marcadas = []
-    for fila in filas:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-        checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-        if checkbox.is_selected():
-            usuario = limpiar_texto(columnas[4].text)
-            fecha_activacion = limpiar_texto(columnas[8].text)
-            plan = limpiar_texto(columnas[9].text)
-            vr_total = normalizar_dinero(columnas[12].text)
-            suma_planilla += vr_total
-            filas_marcadas.append({
-                "usuario": usuario,
-                "fecha_activacion": fecha_activacion,
-                "plan": plan,
-                "vr_total_planilla": vr_total,
-            })
-    return {
-        "dinero_volante": dinero_volante,
-        "suma_planilla": suma_planilla,
-        "coincide": suma_planilla == dinero_volante,
-        "faltante": max(dinero_volante - suma_planilla, 0),
-        "excedente": max(suma_planilla - dinero_volante, 0),
-        "filas_marcadas": filas_marcadas,
-    }
-
-
-def contar_planes_marcados(driver) -> int:
-    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
-    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
-    cantidad = 0
-
-    for fila in filas:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-        checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-        if checkbox.is_selected():
-            cantidad += 1
-
-    return cantidad
-
-def parsear_fecha(fecha: str) -> datetime:
-    fecha = limpiar_texto(fecha)
-    fecha = fecha.replace("a.m.", "AM").replace("p.m.", "PM")
-    return datetime.strptime(fecha, "%d/%m/%Y %I:%M:%S %p")
-
-def obtener_porta_antigua(driver, resultados_tns: list[dict]):
-    tipos_por_usuario = {
-        item["usuario"]: item["tipo_plan"]
-        for item in resultados_tns
-    }
-    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
-    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
-    portabilidades = []
-    for fila in filas:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-        usuario = limpiar_texto(columnas[4].text)
-        fecha_activacion = limpiar_texto(columnas[8].text)
-        plan = limpiar_texto(columnas[9].text)
-        vr_total = normalizar_dinero(columnas[12].text)
-        checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-        if tipos_por_usuario.get(usuario) == "portabilidad" and not checkbox.is_selected():
-            portabilidades.append({
-                "usuario": usuario,
-                "fecha_activacion": fecha_activacion,
-                "plan": plan,
-                "vr_total_planilla": vr_total,
-                "checkbox": checkbox,
-            })
-    if not portabilidades:
-        return None
-    return min(
-        portabilidades,
-        key=lambda fila: parsear_fecha(fila["fecha_activacion"])
-    )
-
-
-def contar_portabilidades_restantes(driver, resultados_tns: list[dict]) -> int:
-    usuarios_portabilidad = {
-        item["usuario"]
-        for item in resultados_tns
-        if item.get("tipo_plan") == "portabilidad"
-    }
-
-    if not usuarios_portabilidad:
-        return 0
-
-    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
-    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
-    cantidad = 0
-
-    for fila in filas:
-        columnas = fila.find_elements(By.TAG_NAME, "td")
-        if not columnas:
-            continue
-
-        usuario = limpiar_texto(columnas[4].text)
-        checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-
-        if usuario in usuarios_portabilidad and not checkbox.is_selected():
-            cantidad += 1
-
-    return cantidad
-
-
-def obtener_valor_select(datos_volante: dict | None, *claves, default: str | None = None) -> str | None:
-    if datos_volante is None:
-        return default
-
-    for clave in claves:
-        valor = datos_volante.get(clave)
-        if valor:
-            return str(valor)
-
-    return default
-
-
-def obtener_valores_producto(datos_volante: dict | None) -> list[str]:
-    if datos_volante is None:
-        return ["3", "5", "7"]
-
-    productos = datos_volante.get("productos")
-    if isinstance(productos, (list, tuple)):
-        valores = [str(producto).strip() for producto in productos if str(producto).strip()]
-        if valores:
-            return valores
-
-    producto = datos_volante.get("producto")
-    if producto:
-        return [str(producto).strip()]
-
-    return ["3", "5", "7"]
-
-def go_to_spreadsheets(driver, datos_volante: dict | None = None) -> None:
+def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=None):
     try:
-        time.sleep(1)
-        try:
-            click(driver,By.CSS_SELECTOR,BUTTON_MENU,timeout=5)
-        except Exception:
-            open_url(driver, urljoin(driver.current_url, "/Recaudo.PS/Dispatcher/MainMenu"))
+        from app.config.selectors import START_DATE
 
-        time.sleep(1)
-        click(driver,By.CSS_SELECTOR,BUTTON_SPREADSHEETS)
-        time.sleep(1)
-        click(driver,By.XPATH,SELECT_SPREADSHEETS)
-        time.sleep(1)
-        click(driver,By.CSS_SELECTOR,GO_TO_SPREADHEETS)
-        time.sleep(1)
-
-        click(driver,By.CSS_SELECTOR,GENERATE_SPREADSHEETS)
-        time.sleep(1)
+        wait_present(driver, By.ID, SELECT_USER_NAME)
 
         codigo_activacion = obtener_valor_select(
             datos_volante,
             "codigo_activacion",
+            "codigo_usuario",
             "user_code",
-            default="45965517",
         )
         codigo_oficina = obtener_valor_select(
             datos_volante,
-            "codigo_punto_venta",
             "codigo_oficina_planilla",
-            "poliedro_code",
+            "codigo_punto_venta",
+            "planilla_code",
+            "office_code",
         )
-        tipo_venta = obtener_valor_select(datos_volante, "tipo_venta", default="4")
-        tipo_generacion = obtener_valor_select(datos_volante, "tipo_generacion", default="1")
-        tipo_planillado = obtener_valor_select(datos_volante, "tipo_planillado", default="1")
-        planilla = obtener_valor_select(datos_volante, "planilla", default="1")
         productos = obtener_valores_producto(datos_volante)
+        tipo_generacion = "1"
+        tipo_planillado = "1"
+        planilla = "1"
 
-        click(driver,By.ID,SELECT_USER_NAME)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_USER_NAME,codigo_activacion)
+        if not codigo_activacion:
+            raise ValueError("Falta codigo de usuario en los datos del volante")
+        if not codigo_oficina:
+            raise ValueError("Falta codigo de oficina en los datos del volante")
 
-        time.sleep(1)
-        click(driver,By.ID,SELECT_OFFICE)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_OFFICE,codigo_oficina)
-
-        time.sleep(1)
-        click(driver,By.ID,SELECT_TYPE_OF_SALE)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_TYPE_OF_SALE,tipo_venta)
-
-        time.sleep(1)
-        click(driver,By.ID,SELECT_GENERATION_TYPE)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_GENERATION_TYPE,tipo_generacion)
-
-        time.sleep(1)
-        click(driver,By.ID,SELECT_SPREADSHEET_TYPE)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_SPREADSHEET_TYPE,tipo_planillado)
-
-        time.sleep(1)
-        click(driver,By.ID,SELECT_SPREADSHEET_IN_SPREADSHEET)
-        time.sleep(1)
-        selectInSelect(driver,By.ID,SELECT_SPREADSHEET_IN_SPREADSHEET,planilla)
+        dinero_volante = None
+        if datos_volante is not None:
+            dinero_volante = datos_volante.get("dinero") or datos_volante.get("dinero_volante")
+        if isinstance(dinero_volante, str):
+            dinero_volante = normalizar_dinero(dinero_volante)
+        if dinero_volante is None:
+            raise ValueError("Falta dinero del volante para validar la planilla")
+        saldo_pendiente = dinero_volante
 
         for producto in productos:
-            time.sleep(1)
-            click(driver,By.ID,SELECT_PRODUCT)
-            time.sleep(1)
-            selectInSelect(driver,By.ID,SELECT_PRODUCT,producto)
-            print(f"Formulario llenado hasta producto: {producto}")
+            if saldo_pendiente <= 0:
+                return ventana_tns
 
-            # time.sleep(1)
-            # click(driver,By.ID,BUTTON_CONFIRMAR_GENERACION)
-            # time.sleep(2)
-            #
-            # print(f"Producto generado: {producto}")
-            #
-            # resultados = obtener_filas_planilla(driver)
-            # resultados_tns = []
-            #
-            # for item in resultados:
-            #     resultado = manejar_tns(item)
-            #     resultados_tns.append(resultado)
-            #
-            #     if resultado["tipo_plan"] == "linea_nueva":
-            #         checkbox = get_checkbox_por_usuario(driver, resultado["usuario"])
-            #         if checkbox and not checkbox.is_selected():
-            #             checkbox.click()
-            #     elif resultado["tipo_plan"] == "upgrade":
-            #         checkbox = get_checkbox_por_usuario(driver,resultado["usuario"])
-            #         if checkbox and not checkbox.is_selected():
-            #             checkbox.click()
-            #     print(resultado)
-            #     print(f"Planes marcados: {contar_planes_marcados(driver)}")
-            #
-            # dinero_volante = None
-            # if datos_volante is not None:
-            #     dinero_volante = datos_volante.get("dinero")
-            #     if dinero_volante is None:
-            #         dinero_volante = datos_volante.get("dinero_volante")
-            #
-            # if dinero_volante is not None:
-            #     validacion = validate_money(driver, dinero_volante)
-            #     print(validacion)
-            #     print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
-            #
-            #     while not validacion["coincide"] and validacion["faltante"] > 0:
-            #         porta_antigua = obtener_porta_antigua(driver, resultados_tns)
-            #         if porta_antigua is None:
-            #             break
-            #
-            #         porta_antigua["checkbox"].click()
-            #         print(f"Portabilidad mas antigua marcada: {porta_antigua}")
-            #         print(f"Planes marcados: {contar_planes_marcados(driver)}")
-            #         validacion = validate_money(driver, dinero_volante)
-            #         print(validacion)
-            #         print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
-            #
-            #     if validacion["coincide"]:
-            #         break
+            enfocar_chrome(driver)
+            llenar_formulario_planillado(
+                driver,
+                codigo_activacion,
+                codigo_oficina,
+                tipo_generacion,
+                tipo_planillado,
+                planilla,
+                producto,
+                START_DATE,
+            )
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.ID, BUTTON_NOT_SPREADSHEET))
+                )
+                click(driver, By.ID, BUTTON_NOT_SPREADSHEET, timeout=5)
 
-            break
+                time.sleep(3)
+                WebDriverWait(driver, 12).until(
+                    EC.visibility_of_element_located((By.ID, SELECT_GENERATION_TYPE))
+                )
+                WebDriverWait(driver, 12).until(
+                    EC.element_to_be_clickable((By.ID, SELECT_GENERATION_TYPE))
+                )
+                continue
+            except TimeoutException:
+                pass
+
+            time.sleep(3)
+
+            wait_present(driver, By.ID, TABLE_PLANILLA)
+
+            if producto in {"3", "7"}:
+                valor_producto = generar_e_imprimir_planilla(driver, espera=2)
+                saldo_pendiente -= valor_producto
+                print(
+                    f"Producto {producto}: generado {valor_producto}. "
+                    f"Saldo pendiente: {max(saldo_pendiente, 0)}"
+                )
+                continue
+
+            screenshot_name = (
+                f"tabla_planilla_{producto}_{datetime.today().strftime('%Y%m%d_%H%M%S')}.png"
+            )
+            driver.save_screenshot(screenshot_name)
+            time.sleep(10)
+            check_first_checkbox(driver)
+            time.sleep(2)
+
+            resultados = obtener_filas_planilla(driver)
+            if len(resultados) == 1:
+                checkbox = get_checkbox_por_usuario(driver, resultados[0]["usuario"])
+                if checkbox and checkbox.is_selected():
+                    checkbox.click()
+                validacion = validate_money(driver, saldo_pendiente)
+                if not validacion["coincide"]:
+                    print(
+                        f"Producto {producto}: un solo item por {validacion['suma_planilla']} "
+                        f"no cuadra con saldo pendiente {saldo_pendiente}"
+                    )
+                generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                return ventana_tns
+
+            resultados_tns = []
+            if ventana_tns is None:
+                ventana_tns = entrar_tns()
+                ventana_tns = ingresar_a_cartera(ventana_tns)
+            for item in resultados:
+                try:
+                    resultado = manejar_tns(ventana_tns, item)
+                except ValueError as error:
+                    resultado = item.copy()
+                    resultado["tipo_plan"] = "no_encontrado"
+                    resultado["error_tns"] = str(error)
+                    resultado["codigo_oficina_planilla"] = codigo_oficina
+                    resultado["codigo_usuario_volante"] = codigo_activacion
+                    resultado["producto"] = producto
+                    resultado["fecha_volante"] = (
+                        datos_volante.get("fecha") if datos_volante else ""
+                    )
+
+                resultados_tns.append(resultado)
+
+                if resultado["tipo_plan"] == "linea_nueva":
+                    checkbox = get_checkbox_por_usuario(driver, resultado["usuario"])
+                    if checkbox and checkbox.is_selected():
+                        checkbox.click()
+                elif resultado["tipo_plan"] == "upgrade":
+                    checkbox = get_checkbox_por_usuario(driver, resultado["usuario"])
+                    if checkbox and checkbox.is_selected():
+                        checkbox.click()
+
+            usuarios_no_encontrados = [
+                item
+                for item in resultados_tns
+                if item.get("tipo_plan") == "no_encontrado"
+            ]
+            guardar_usuarios_no_encontrados(usuarios_no_encontrados)
+
+            enfocar_chrome(driver)
+            validacion = validate_money(driver, saldo_pendiente)
+            print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
+            todas_son_portabilidad = (
+                resultados_tns
+                and not usuarios_no_encontrados
+                and all(item.get("tipo_plan") == "portabilidad" for item in resultados_tns)
+            )
+
+            if not usuarios_no_encontrados:
+                while not validacion["coincide"] and validacion["faltante"] > 0:
+                    porta_antigua = obtener_porta_antigua(driver, resultados_tns)
+                    if porta_antigua is None:
+                        break
+
+                    if porta_antigua["checkbox"].is_selected():
+                        porta_antigua["checkbox"].click()
+                    validacion = validate_money(driver, saldo_pendiente)
+                    print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
+
+            if todas_son_portabilidad and not validacion["coincide"]:
+                print(
+                    "Todas las filas son portabilidad; se genera con las mas antiguas "
+                    f"por {validacion['suma_planilla']} de {saldo_pendiente}"
+                )
+
+            if validacion["coincide"] or usuarios_no_encontrados or todas_son_portabilidad:
+                generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                #return ventana_tns
+
+        return ventana_tns
 
     except Exception as e:
         raise Exception(f"Error al ir a las planillas: {e}") from e

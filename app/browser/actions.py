@@ -27,7 +27,8 @@ def wait_present(driver, by: By, value: str, timeout: int = DEFAULT_TIMEOUT):
 
 
 def click(driver, by: By, value: str, timeout: int = DEFAULT_TIMEOUT) -> None:
-    wait_clickable(driver, by, value, timeout).click()
+    element = wait_clickable(driver, by, value, timeout)
+    element.click()
 
 
 def type_text(
@@ -56,6 +57,13 @@ def selectInSelect(
 
     if not WebDriverWait(driver, timeout).until(seleccionar):
         raise TimeoutError(f"No fue posible seleccionar {option} en {value}")
+
+
+def enfocar_chrome(driver) -> None:
+    driver.switch_to.window(driver.current_window_handle)
+    driver.execute_script("window.focus();")
+    time.sleep(1)
+
 
 def capture_screenshot(driver,filename:str)->None:
     driver.save_screenshot(filename)

@@ -27,6 +27,7 @@ POLIEDRO_URL = os.getenv(
 POLIEDRO_USERNAME = os.getenv("POLIEDRO_USERNAME", "")
 POLIEDRO_PASSWORD = os.getenv("POLIEDRO_PASSWORD", "")
 DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "10"))
+FORM_READY_DELAY_SECONDS = float(os.getenv("FORM_READY_DELAY_SECONDS", "4"))
 PRINTER_NAME = os.getenv("PRINTER", "")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 
