@@ -20,7 +20,7 @@ from app.config.selectors import (
 from app.config.settings import FORM_READY_DELAY_SECONDS
 from app.storage.main import get_office_folder
 from app.template.codes_places.main import OFFICES
-from app.flows.flyers.helpers import construir_datos_volante, get_before_day
+from app.flows.flyers.helpers import construir_datos_volante, obtener_fechas_consulta_volantes
 
 
 VOLANTES_INDEX_PATH = "/Recaudo.PS/VolantesNIT/Index"
@@ -42,15 +42,16 @@ def asegurar_formulario_volantes(driver) -> None:
     wait_present(driver, By.ID, SELECT_DISTRIBUTOR)
 
 
-def obtener_volantes_por_oficina(driver, codeplace):
+def obtener_volantes_por_oficina(driver, codeplace, fecha_consulta):
     try:
         asegurar_formulario_volantes(driver)
         selectInSelect(driver, By.ID, SELECT_DISTRIBUTOR, codeplace)
         selectInSelect(driver, By.ID, SELECT_TYPE, "V")
-        type_text(driver, By.ID, SELECT_INITIALDATE, get_before_day().strftime("%d/%m/%Y"))
-        type_text(driver, By.ID, SELECT_FINALDATE, get_before_day().strftime("%d/%m/%Y"))
+        type_text(driver, By.ID, SELECT_INITIALDATE, fecha_consulta.strftime("%d/%m/%Y"))
+        type_text(driver, By.ID, SELECT_FINALDATE, fecha_consulta.strftime("%d/%m/%Y"))
         print(
             "Formulario de consulta de volantes completo. "
+            f"Fecha: {fecha_consulta.strftime('%d/%m/%Y')}. "
             f"Esperando {FORM_READY_DELAY_SECONDS}s antes de consultar."
         )
         time.sleep(FORM_READY_DELAY_SECONDS)
@@ -62,72 +63,83 @@ def obtener_volantes_por_oficina(driver, codeplace):
 def get_flyers(driver) -> list[dict]:
     try:
         datos_volantes = []
+        fechas_consulta = obtener_fechas_consulta_volantes()
         for office in OFFICES:
             codeplace = office["poliedro_code"]
             office_name = office["name"]
-            time.sleep(1)
-            obtener_volantes_por_oficina(driver, codeplace)
-            no_hay_volante = driver.find_elements(By.ID, "MessageSinReg")
-            if no_hay_volante:
-                print("NO HAY VOLANTES EN ESTA OFICINA")
-                continue
 
-            cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
-            hrefs_volantes = [
-                volante.get_attribute("href")
-                for volante in cantidad_de_volantes
-                if volante.get_attribute("href")
-            ]
-
-            for i, href_volante in enumerate(hrefs_volantes):
-                if i > 0:
-                    time.sleep(1)
-                    obtener_volantes_por_oficina(driver, codeplace)
+            for fecha_consulta in fechas_consulta:
                 time.sleep(1)
-                cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
-
-                driver.execute_script("document.body.style.zoom='100%'")
-                time.sleep(2)
-                folder = get_office_folder(office_name)
-                capture_screenshot(driver, f"{folder}/Lista_Volantes_{office_name}_{i}.png")
-                time.sleep(1)
-                
-                volante_objetivo = None
-                for volante in cantidad_de_volantes:
-                    if volante.get_attribute("href") == href_volante:
-                        volante_objetivo = volante
-                        break
-
-                if volante_objetivo is None:
-                    print(f"NO SE ENCONTRO EL VOLANTE {i} EN LA OFICINA {office_name}")
+                obtener_volantes_por_oficina(driver, codeplace, fecha_consulta)
+                no_hay_volante = driver.find_elements(By.ID, "MessageSinReg")
+                if no_hay_volante:
+                    print(
+                        f"NO HAY VOLANTES EN ESTA OFICINA PARA "
+                        f"{fecha_consulta.strftime('%d/%m/%Y')}"
+                    )
                     continue
 
-                filas = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
-                if i < len(filas):
-                    columnas = filas[i].find_elements(By.TAG_NAME, "td")
-                    dinero_volante = columnas[1].text.strip()
-                    codigo_usuario = columnas[3].text.strip()
+                cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
+                hrefs_volantes = [
+                    volante.get_attribute("href")
+                    for volante in cantidad_de_volantes
+                    if volante.get_attribute("href")
+                ]
 
-                    datos_volante = construir_datos_volante(
-                        codigo_usuario,
-                        office["office_code"],
-                        office["poliedro_code"],
-                        office["planilla_code"],
-                        dinero_volante,
-                    )
-                    datos_volantes.append(datos_volante)
+                for i, href_volante in enumerate(hrefs_volantes):
+                    if i > 0:
+                        time.sleep(1)
+                        obtener_volantes_por_oficina(driver, codeplace, fecha_consulta)
+                    time.sleep(1)
+                    cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
 
-                volante_objetivo.click()
-                time.sleep(3)
-                # Se deja desactivado el envio a impresion por ahora.
-                #click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
-                driver.execute_script("document.body.style.zoom='50%'")
-                time.sleep(2)
-                folder = get_office_folder(office_name)
-                capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{i}.png")
-                time.sleep(1)
-                click(driver, By.ID, BOTON_CANCELAR_VOLANTE)
-                asegurar_formulario_volantes(driver)
+                    driver.execute_script("document.body.style.zoom='100%'")
+                    time.sleep(2)
+                    folder = get_office_folder(office_name)
+                    fecha_archivo = fecha_consulta.strftime("%Y%m%d")
+                    capture_screenshot(driver, f"{folder}/Lista_Volantes_{office_name}_{fecha_archivo}_{i}.png")
+                    time.sleep(1)
+
+                    volante_objetivo = None
+                    for volante in cantidad_de_volantes:
+                        if volante.get_attribute("href") == href_volante:
+                            volante_objetivo = volante
+                            break
+
+                    if volante_objetivo is None:
+                        print(
+                            f"NO SE ENCONTRO EL VOLANTE {i} EN LA OFICINA "
+                            f"{office_name} PARA {fecha_consulta.strftime('%d/%m/%Y')}"
+                        )
+                        continue
+
+                    filas = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                    if i < len(filas):
+                        columnas = filas[i].find_elements(By.TAG_NAME, "td")
+                        dinero_volante = columnas[1].text.strip()
+                        codigo_usuario = columnas[3].text.strip()
+
+                        datos_volante = construir_datos_volante(
+                            codigo_usuario,
+                            office["office_code"],
+                            office["poliedro_code"],
+                            office["planilla_code"],
+                            dinero_volante,
+                            fecha_consulta,
+                        )
+                        datos_volantes.append(datos_volante)
+
+                    volante_objetivo.click()
+                    time.sleep(3)
+                    # Se deja desactivado el envio a impresion por ahora.
+                    #click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
+                    driver.execute_script("document.body.style.zoom='50%'")
+                    time.sleep(2)
+                    folder = get_office_folder(office_name)
+                    capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{fecha_archivo}_{i}.png")
+                    time.sleep(1)
+                    click(driver, By.ID, BOTON_CANCELAR_VOLANTE)
+                    asegurar_formulario_volantes(driver)
 
         return datos_volantes
     except Exception as e:

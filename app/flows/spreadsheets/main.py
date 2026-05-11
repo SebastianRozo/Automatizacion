@@ -15,7 +15,8 @@ from app.config.selectors import (
     SELECT_GENERATION_TYPE,
     SELECT_USER_NAME,
     TABLE_PLANILLA,
-    VALOR_TOTAL_TABLA_PLANILLA
+    VALOR_TOTAL_TABLA_PLANILLA,
+    TARJETA_CREDITO_TABLA_PLANILLA
 )
 from app.flows.spreadsheets.helpers import (
     normalizar_dinero,
@@ -33,13 +34,27 @@ from app.flows.spreadsheets.planilla_actions import (
 )
 from app.storage.not_found_users import guardar_usuarios_no_encontrados
 
+def obtener_valor_tarjeta_credito(driver) -> int:
+    try:
+        valor_tarjeta_credito = wait_present(
+            driver,
+            By.ID,
+            TARJETA_CREDITO_TABLA_PLANILLA,
+            timeout=3,
+        )
+        return normalizar_dinero(valor_tarjeta_credito.text)
+    except TimeoutException:
+        return 0
 
-def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = False) -> None:
+
+def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = False) -> dict:
     enfocar_chrome(driver)
     click(driver, By.ID, BUTTON_SIMULAR, timeout=10)
     time.sleep(espera)
     total = wait_present(driver, By.ID, VALOR_TOTAL_TABLA_PLANILLA, timeout=10)
-    valor_producto = normalizar_dinero(total.text)
+    valor_total = normalizar_dinero(total.text)
+    valor_tarjeta_credito = obtener_valor_tarjeta_credito(driver)
+    valor_para_volante = max(valor_total - valor_tarjeta_credito, 0)
 
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
     time.sleep(espera)
@@ -61,7 +76,11 @@ def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = Fa
     time.sleep(espera)
     click(driver, By.ID, BUTTON_CONTINUAR, timeout=10)
     time.sleep(espera)
-    return valor_producto
+    return {
+        "valor_total": valor_total,
+        "valor_tarjeta_credito": valor_tarjeta_credito,
+        "valor_para_volante": valor_para_volante,
+    }
 
 def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=None):
     try:
@@ -138,10 +157,12 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             wait_present(driver, By.ID, TABLE_PLANILLA)
 
             if producto in {"3", "7"}:
-                valor_producto = generar_e_imprimir_planilla(driver, espera=2)
-                saldo_pendiente -= valor_producto
+                valores_planilla = generar_e_imprimir_planilla(driver, espera=2)
+                saldo_pendiente -= valores_planilla["valor_para_volante"]
                 print(
-                    f"Producto {producto}: generado {valor_producto}. "
+                    f"Producto {producto}: generado {valores_planilla['valor_total']}. "
+                    f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
+                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}. "
                     f"Saldo pendiente: {max(saldo_pendiente, 0)}"
                 )
                 continue
@@ -165,7 +186,12 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                         f"Producto {producto}: un solo item por {validacion['suma_planilla']} "
                         f"no cuadra con saldo pendiente {saldo_pendiente}"
                     )
-                generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                valores_planilla = generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                print(
+                    f"Producto {producto}: generado {valores_planilla['valor_total']}. "
+                    f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
+                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}."
+                )
                 return ventana_tns
 
             resultados_tns = []
@@ -212,6 +238,9 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 and not usuarios_no_encontrados
                 and all(item.get("tipo_plan") == "portabilidad" for item in resultados_tns)
             )
+            if usuarios_no_encontrados: 
+                print("NO SE ENCONTRO EL USUARIO . OMITIREMOS OFICINA ")
+                return ventana_tns
 
             if not usuarios_no_encontrados:
                 while not validacion["coincide"] and validacion["faltante"] > 0:
@@ -230,8 +259,13 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     f"por {validacion['suma_planilla']} de {saldo_pendiente}"
                 )
 
-            if validacion["coincide"] or usuarios_no_encontrados or todas_son_portabilidad:
-                generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+            if validacion["coincide"]  or todas_son_portabilidad:
+                valores_planilla = generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                print(
+                    f"Producto {producto}: generado {valores_planilla['valor_total']}. "
+                    f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
+                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}."
+                )
                 #return ventana_tns
 
         return ventana_tns

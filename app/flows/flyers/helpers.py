@@ -5,6 +5,17 @@ def get_before_day() -> datetime.date:
     return datetime.date.today() - datetime.timedelta(days=1)
 
 
+def obtener_fechas_consulta_volantes() -> list[datetime.date]:
+    hoy = datetime.date.today()
+    ayer = hoy - datetime.timedelta(days=1)
+
+    if hoy.weekday() == 0:
+        hace_dos_dias = hoy - datetime.timedelta(days=2)
+        return [hace_dos_dias, ayer]
+
+    return [ayer]
+
+
 def normalizar_dinero(valor: str) -> int:
     solo_digitos = "".join(caracter for caracter in valor if caracter.isdigit())
     return int(solo_digitos) if solo_digitos else 0
@@ -16,10 +27,11 @@ def construir_datos_volante(
     poliedro_code: str,
     codigo_oficina_planilla: str,
     dinero_volante: str,
+    fecha_volante: datetime.date,
 ) -> dict:
     codigo_usuario = codigo_usuario.strip()
     return {
-        "fecha": get_before_day().strftime("%d/%m/%Y"),
+        "fecha": fecha_volante.strftime("%d/%m/%Y"),
         "office_code": office_code.strip(),
         "poliedro_code": poliedro_code.strip(),
         "codigo_oficina_planilla": codigo_oficina_planilla.strip(),
