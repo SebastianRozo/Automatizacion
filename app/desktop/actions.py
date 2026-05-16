@@ -2,7 +2,7 @@ from pywinauto import Desktop
 import os
 import time
 import unicodedata
-from app.config.settings import TNS_USERNAME, TNS_PASSWORD,TNS_OFFICE
+from app.config.settings import TNS_USERNAME, TNS_PASSWORD, TNS_OFFICE, TNS_APP_PATH
 
 
 #SCRIPT PARA MANEJAR TNS FUNCIONANDO 
@@ -227,7 +227,9 @@ def esperar_ventana_login_tns(timeout=120):
     raise TimeoutError("No apareció la ventana de login de TNS con txtEmpresa")
 
 def entrar_tns():
-    os.startfile(r"C:\Users\Sebas\OneDrive\Escritorio\Portal TNS.appref-ms")
+    if not TNS_APP_PATH:
+        raise ValueError("Falta TNS_APP_PATH en .env con la ruta de Portal TNS")
+    os.startfile(TNS_APP_PATH)
     time.sleep(5)
     ventana = esperar_ventana_login_tns()
     ventana.wait("visible", timeout=20)

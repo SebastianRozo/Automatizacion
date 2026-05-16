@@ -1,6 +1,9 @@
 from openpyxl import load_workbook
 from app.template.codes_places.main import OFFICES
 from datetime import datetime,date
+from app.config.settings import EXCEL_OUTPUT_PATH, EXCEL_TEMPLATE_PATH
+
+
 def normalizar_texto_excel(valor):
     return str(valor or "").strip().upper()
 
@@ -42,7 +45,7 @@ def buscar_columna_por_oficina(hoja, oficina_buscada):
 
 def actualizar_excel(datos_volantes: list[dict]):
     try:
-        plantilla = load_workbook(r"C:\Users\Sebas\OneDrive\Escritorio\Script Poliedro\ScriptEntrarPoliedro\app\template\plantillaExcel\M-GO-FT-02 Formato Consolidado pago de volantes V1.-1.xlsx")
+        plantilla = load_workbook(EXCEL_TEMPLATE_PATH)
         hoja = plantilla["M-GO-FT-02 V. POSTPAGO"]
         for datos_volante in datos_volantes:
             fecha = datos_volante["fecha"]
@@ -53,6 +56,7 @@ def actualizar_excel(datos_volantes: list[dict]):
             valor_actual = hoja.cell(row=fila, column=columna).value or 0
             hoja.cell(row=fila, column=columna, value=valor_actual + vr_total)
 
-        plantilla.save(r"C:\Users\Sebas\OneDrive\Escritorio\Script Poliedro\ScriptEntrarPoliedro\app\template\plantillaExcel\M-GO-FT-02 Formato Consolidado pago de volantes V1.-1.xlsx")
+        EXCEL_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        plantilla.save(EXCEL_OUTPUT_PATH)
     except Exception as e:
         raise Exception(f"Error al actualizar el excel: {e}") from e

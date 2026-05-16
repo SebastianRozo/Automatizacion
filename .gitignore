@@ -22,3 +22,8 @@ Thumbs.db
 screenshots/
 output/
 exports/
+
+# Build outputs
+build/
+dist/
+*.spec
