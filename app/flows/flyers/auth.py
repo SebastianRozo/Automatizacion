@@ -24,13 +24,22 @@ from app.flows.spreadsheets.main import go_to_spreadsheets
 from app.flows.spreadsheets.planilla_actions import abrir_planillado
 from app.template.plantillaExcel.main import actualizar_excel
 
+
+TOKEN_REQUIRED_MESSAGE = "TOKEN_REQUIRED: Ingrese el token generado en Poliedro."
+
+
 def login(token: str | None = None) -> None:
     driver = create_driver()
 
     try:
         open_url(driver, POLIEDRO_URL)
         submit_credentials(driver, POLIEDRO_USERNAME, POLIEDRO_PASSWORD)
-        token = token or os.getenv("AUTOMATION_TOKEN") or input("Ingrese el token: ")
+        token = token or os.getenv("AUTOMATION_TOKEN")
+        if not token:
+            print(TOKEN_REQUIRED_MESSAGE, flush=True)
+            token = input().strip()
+        if not token:
+            raise ValueError("No se ingreso el token generado en Poliedro")
         submit_token(driver, token)
         datos_volantes = download_flyers(driver, SELECTOR_MIGRATION_BUTTON, SELECTOR_FLYERS_NIT)
         #actualizar_excel(datos_volantes)

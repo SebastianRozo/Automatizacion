@@ -146,9 +146,18 @@ class PoliedroApp(ttk.Frame):
         ttk.Label(frame, text="Token").grid(row=0, column=0, sticky="w", padx=(0, 8))
         token_entry = ttk.Entry(frame, textvariable=self.token_var, show="*")
         token_entry.grid(row=0, column=1, sticky="ew", padx=(0, 12))
+        token_entry.bind("<Return>", lambda _event: self.send_token())
+
+        self.send_token_button = ttk.Button(
+            frame,
+            text="Enviar token",
+            command=self.send_token,
+            state="disabled",
+        )
+        self.send_token_button.grid(row=0, column=2, padx=(0, 8))
 
         self.start_button = ttk.Button(frame, text="Iniciar", command=self.start_automation)
-        self.start_button.grid(row=0, column=2, padx=(0, 8))
+        self.start_button.grid(row=0, column=3, padx=(0, 8))
 
         self.stop_button = ttk.Button(
             frame,
@@ -156,11 +165,11 @@ class PoliedroApp(ttk.Frame):
             command=self.stop_automation,
             state="disabled",
         )
-        self.stop_button.grid(row=0, column=3)
+        self.stop_button.grid(row=0, column=4)
 
         self.status_var = tk.StringVar(value="Listo")
         ttk.Label(frame, textvariable=self.status_var).grid(
-            row=1, column=0, columnspan=4, sticky="w", pady=(10, 0)
+            row=1, column=0, columnspan=5, sticky="w", pady=(10, 0)
         )
 
     def _build_logs(self) -> None:
@@ -235,10 +244,8 @@ class PoliedroApp(ttk.Frame):
         values["HEADLESS"] = "true" if self.headless_var.get() else "false"
         return values
 
-    def _validate(self, values: dict[str, str], token: str) -> bool:
+    def _validate(self, values: dict[str, str]) -> bool:
         missing = [label for key, label in REQUIRED_FIELDS.items() if not values.get(key)]
-        if not token.strip():
-            missing.append("Token")
 
         if missing:
             messagebox.showerror(
@@ -255,7 +262,7 @@ class PoliedroApp(ttk.Frame):
 
         values = self._collect_values()
         token = self.token_var.get().strip()
-        if not self._validate(values, token):
+        if not self._validate(values):
             return
 
         write_env_file(values)
@@ -265,7 +272,10 @@ class PoliedroApp(ttk.Frame):
         command = self._automation_command()
         env = os.environ.copy()
         env.update(values)
-        env["AUTOMATION_TOKEN"] = token
+        if token:
+            env["AUTOMATION_TOKEN"] = token
+        else:
+            env.pop("AUTOMATION_TOKEN", None)
         env["PYTHONUNBUFFERED"] = "1"
 
         creationflags = 0
@@ -279,6 +289,7 @@ class PoliedroApp(ttk.Frame):
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
                 text=True,
                 bufsize=1,
                 creationflags=creationflags,
@@ -290,8 +301,29 @@ class PoliedroApp(ttk.Frame):
 
         self.status_var.set("Ejecutando")
         self.start_button.configure(state="disabled")
+        self.send_token_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         threading.Thread(target=self._read_process_output, daemon=True).start()
+
+    def send_token(self) -> None:
+        if not self.process or self.process.poll() is not None or self.process.stdin is None:
+            return
+
+        token = self.token_var.get().strip()
+        if not token:
+            messagebox.showerror("Falta token", "Ingresa el token generado en Poliedro.")
+            return
+
+        try:
+            self.process.stdin.write(token + "\n")
+            self.process.stdin.flush()
+        except Exception as error:
+            messagebox.showerror("Error", f"No fue posible enviar el token:\n{error}")
+            return
+
+        self.send_token_button.configure(state="disabled")
+        self.status_var.set("Token enviado")
+        self._append_log("Token enviado. Continuando automatizacion...\n")
 
     def stop_automation(self) -> None:
         if not self.process or self.process.poll() is not None:
@@ -336,7 +368,14 @@ class PoliedroApp(ttk.Frame):
             if message == "__PROCESS_DONE__":
                 self.status_var.set("Listo")
                 self.start_button.configure(state="normal")
+                self.send_token_button.configure(state="disabled")
                 self.stop_button.configure(state="disabled")
+                continue
+
+            if message.startswith("TOKEN_REQUIRED:"):
+                self.status_var.set("Esperando token")
+                self.send_token_button.configure(state="normal")
+                self._append_log("Ingresa el token generado en Poliedro y presiona Enviar token.\n")
                 continue
 
             self._append_log(message)
