@@ -1,5 +1,6 @@
 from urllib.parse import urljoin
 import time
+from datetime import date
 
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
@@ -32,6 +33,16 @@ from app.flows.spreadsheets.helpers import (
 )
 
 
+FORMULARIO_PLANILLADO_PATH = "/RPlanillado/GestionPlanillas/Generar/FiltrosPlanilla.aspx"
+
+
+def es_fecha_activacion_hoy(fecha_activacion: str) -> bool:
+    try:
+        return parsear_fecha(fecha_activacion).date() == date.today()
+    except ValueError:
+        return False
+
+
 def obtener_filas_planilla(driver) -> list[dict]:
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
     filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
@@ -40,9 +51,14 @@ def obtener_filas_planilla(driver) -> list[dict]:
         columnas = fila.find_elements(By.TAG_NAME, "td")
         if not columnas:
             continue
+        fecha_activacion = limpiar_texto(columnas[8].text)
+        if es_fecha_activacion_hoy(fecha_activacion):
+            print(f"Fila omitida por ser activacion de hoy: {fecha_activacion}")
+            continue
+
         resultados.append({
             "usuario": limpiar_texto(columnas[4].text),
-            "fecha_activacion": limpiar_texto(columnas[8].text),
+            "fecha_activacion": fecha_activacion,
             "vr_total_planilla": normalizar_dinero(columnas[12].text),
         })
     return resultados
@@ -64,7 +80,7 @@ def check_first_checkbox(driver) -> None:
         driver.execute_script("arguments[0].click();", checkbox_header)
 
 
-def get_checkbox_por_usuario(driver, usuario_objetivo: str):
+def get_checkbox_por_usuario(driver, usuario_objetivo: str, fecha_activacion_objetivo: str | None = None):
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
     filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
     for fila in filas:
@@ -72,6 +88,9 @@ def get_checkbox_por_usuario(driver, usuario_objetivo: str):
         if not columnas:
             continue
         usuario = limpiar_texto(columnas[4].text)
+        fecha_activacion = limpiar_texto(columnas[8].text)
+        if fecha_activacion_objetivo and fecha_activacion != fecha_activacion_objetivo:
+            continue
         checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
         if usuario == usuario_objetivo:
             return checkbox
@@ -91,6 +110,8 @@ def validate_money(driver, dinero_volante: int) -> dict:
         if not checkbox.is_selected():
             usuario = limpiar_texto(columnas[4].text)
             fecha_activacion = limpiar_texto(columnas[8].text)
+            if es_fecha_activacion_hoy(fecha_activacion):
+                continue
             plan = limpiar_texto(columnas[9].text)
             vr_total = normalizar_dinero(columnas[12].text)
             suma_planilla += vr_total
@@ -140,6 +161,8 @@ def obtener_porta_antigua(driver, resultados_tns: list[dict]):
             continue
         usuario = limpiar_texto(columnas[4].text)
         fecha_activacion = limpiar_texto(columnas[8].text)
+        if es_fecha_activacion_hoy(fecha_activacion):
+            continue
         plan = limpiar_texto(columnas[9].text)
         vr_total = normalizar_dinero(columnas[12].text)
         checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
@@ -179,6 +202,9 @@ def contar_portabilidades_restantes(driver, resultados_tns: list[dict]) -> int:
             continue
 
         usuario = limpiar_texto(columnas[4].text)
+        fecha_activacion = limpiar_texto(columnas[8].text)
+        if es_fecha_activacion_hoy(fecha_activacion):
+            continue
         checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
 
         if usuario in usuarios_portabilidad and not checkbox.is_selected():
@@ -228,31 +254,32 @@ def click_con_reintento(driver, by, value: str, intentos: int = 3) -> None:
         raise ultimo_error
 
 
-def abrir_planillado(driver) -> None:
-    if driver.find_elements(By.ID, SELECT_USER_NAME):
+def abrir_planillado(driver, forzar: bool = False) -> None:
+    if not forzar and driver.find_elements(By.ID, SELECT_USER_NAME):
+        return
+
+    if forzar:
+        open_url(driver, urljoin(driver.current_url, FORMULARIO_PLANILLADO_PATH))
+        wait_present(driver, By.ID, SELECT_USER_NAME)
         return
 
     time.sleep(3)
     try:
         click(driver, By.CSS_SELECTOR, BUTTON_MENU, timeout=5)
+        time.sleep(1)
+        click(driver, By.CSS_SELECTOR, BUTTON_SPREADSHEETS)
+        time.sleep(1)
+        click(driver, By.XPATH, SELECT_SPREADSHEETS)
+        time.sleep(3)
+        click(driver, By.CSS_SELECTOR, GO_TO_SPREADHEETS)
+        time.sleep(3)
+
+        try:
+            click(driver, By.CSS_SELECTOR, GENERATE_SPREADSHEETS, timeout=5)
+        except TimeoutException:
+            open_url(driver, urljoin(driver.current_url, FORMULARIO_PLANILLADO_PATH))
     except Exception:
-        open_url(driver, urljoin(driver.current_url, "/Recaudo.PS/Dispatcher/MainMenu"))
-
-    time.sleep(1)
-    click(driver, By.CSS_SELECTOR, BUTTON_SPREADSHEETS)
-    time.sleep(1)
-    click(driver, By.XPATH, SELECT_SPREADSHEETS)
-    time.sleep(3)
-    click(driver, By.CSS_SELECTOR, GO_TO_SPREADHEETS)
-    time.sleep(3)
-
-    try:
-        click(driver, By.CSS_SELECTOR, GENERATE_SPREADSHEETS, timeout=5)
-    except TimeoutException:
-        open_url(
-            driver,
-            urljoin(driver.current_url, "/RPlanillado/GestionPlanillas/Generar/FiltrosPlanilla.aspx"),
-        )
+        open_url(driver, urljoin(driver.current_url, FORMULARIO_PLANILLADO_PATH))
 
     time.sleep(3)
     wait_present(driver, By.ID, SELECT_USER_NAME)
@@ -268,27 +295,30 @@ def llenar_formulario_planillado(
     producto: str,
     start_date_id: str,
 ) -> None:
-    time.sleep(3)
-    WebDriverWait(driver, 10).until(
+    time.sleep(FORM_READY_DELAY_SECONDS)
+    WebDriverWait(driver, 20).until(
         EC.visibility_of_element_located((By.ID, SELECT_GENERATION_TYPE))
     )
-    WebDriverWait(driver, 10).until(
+    WebDriverWait(driver, 20).until(
         EC.element_to_be_clickable((By.ID, SELECT_GENERATION_TYPE))
     )
 
-    selectInSelect(driver, By.ID, SELECT_USER_NAME, codigo_activacion)
-    time.sleep(1)
-    selectInSelect(driver, By.ID, SELECT_OFFICE, codigo_oficina)
-    time.sleep(1)
-    selectInSelect(driver, By.ID, SELECT_GENERATION_TYPE, tipo_generacion)
-    time.sleep(1)
-    selectInSelect(driver, By.ID, SELECT_SPREADSHEET_TYPE, tipo_planillado)
-    time.sleep(1)
-    selectInSelect(driver, By.ID, SELECT_SPREADSHEET_IN_SPREADSHEET, planilla)
-    time.sleep(1)
-    selectInSelect(driver, By.ID, SELECT_PRODUCT, producto)
+    selectInSelect(driver, By.ID, SELECT_USER_NAME, codigo_activacion, timeout=20)
     time.sleep(2)
-    selectInSelect(driver, By.ID, SELECT_TYPE_OF_SALE, "1")
+    selectInSelect(driver, By.ID, SELECT_OFFICE, codigo_oficina, timeout=20)
+    time.sleep(2)
+    selectInSelect(driver, By.ID, SELECT_GENERATION_TYPE, tipo_generacion, timeout=20)
+    time.sleep(2)
+    selectInSelect(driver, By.ID, SELECT_SPREADSHEET_TYPE, tipo_planillado, timeout=20)
+    time.sleep(2)
+    selectInSelect(driver, By.ID, SELECT_SPREADSHEET_IN_SPREADSHEET, planilla, timeout=20)
+    time.sleep(2)
+    WebDriverWait(driver, 25).until(
+        EC.element_to_be_clickable((By.ID, SELECT_PRODUCT))
+    )
+    selectInSelect(driver, By.ID, SELECT_PRODUCT, producto, timeout=25)
+    time.sleep(3)
+    selectInSelect(driver, By.ID, SELECT_TYPE_OF_SALE, "1", timeout=20)
     time.sleep(FORM_READY_DELAY_SECONDS)
 
     time.sleep(2)

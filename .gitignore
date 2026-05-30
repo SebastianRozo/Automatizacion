@@ -9,7 +9,6 @@ env/
 # Local secrets/config
 .env
 .env.*
-!.env.example
 
 # OS / editors
 .DS_Store
@@ -27,3 +26,7 @@ exports/
 build/
 dist/
 *.spec
+
+# Root-level extras
+prompt_interfaz_gui.md
+build_windows.bat

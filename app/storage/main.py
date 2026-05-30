@@ -1,20 +1,12 @@
 from pathlib import Path
 import datetime
 
+from app.config.settings import CAPTURAS_DIR
+
 
 def rutaGuardado() -> Path:
-    escritorio = Path.home()
-    possible_desktops = [
-        escritorio / "Desktop",
-        escritorio / "Escritorio",
-        escritorio / "OneDrive" / "Desktop",
-        escritorio / "OneDrive" / "Escritorio",
-    ]
-
-    for desktop in possible_desktops:
-        if desktop.exists():
-            return desktop
-    raise FileNotFoundError("No se encontro la carpeta del escritorio")
+    CAPTURAS_DIR.mkdir(exist_ok=True, parents=True)
+    return CAPTURAS_DIR
 
 
 def createFolders() -> Path:

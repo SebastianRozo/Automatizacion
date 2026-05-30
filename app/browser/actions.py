@@ -4,7 +4,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import StaleElementReferenceException
 import time
-from app.config.settings import DEFAULT_TIMEOUT
+from pathlib import Path
+
+from app.config.settings import CAPTURAS_DIR, DEFAULT_TIMEOUT
 
 
 def open_url(driver, url: str) -> None:
@@ -47,8 +49,8 @@ def selectInSelect(
     driver, by: By, value: str, option: str, timeout: int = DEFAULT_TIMEOUT
 ) -> None:
     def seleccionar(_driver):
-        element = wait_present(_driver, by, value, timeout)
         try:
+            element = wait_present(_driver, by, value, timeout)
             select = Select(element)
             select.select_by_value(option)
             return True
@@ -65,5 +67,34 @@ def enfocar_chrome(driver) -> None:
     time.sleep(1)
 
 
-def capture_screenshot(driver,filename:str)->None:
-    driver.save_screenshot(filename)
+def capture_screenshot(driver, filename: str) -> None:
+    screenshot_path = Path(filename)
+    if not screenshot_path.is_absolute():
+        screenshot_path = CAPTURAS_DIR / screenshot_path
+    screenshot_path.parent.mkdir(exist_ok=True, parents=True)
+
+    original_size = driver.get_window_size()
+    try:
+        size = driver.execute_script(
+            """
+            return {
+                width: Math.max(
+                    document.body.scrollWidth,
+                    document.documentElement.scrollWidth,
+                    window.innerWidth
+                ),
+                height: Math.max(
+                    document.body.scrollHeight,
+                    document.documentElement.scrollHeight,
+                    window.innerHeight
+                )
+            };
+            """
+        )
+        width = min(max(int(size.get("width", 1366)), 1366), 1920)
+        height = min(max(int(size.get("height", 900)), 900), 12000)
+        driver.set_window_size(width, height)
+        time.sleep(1)
+        driver.save_screenshot(str(screenshot_path))
+    finally:
+        driver.set_window_size(original_size["width"], original_size["height"])

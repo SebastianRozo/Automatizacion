@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -20,15 +21,27 @@ ENV_KEYS = [
     "TNS_APP_PATH",
     "PRINTER",
     "HEADLESS",
+    "PRINT_SCALE",
+    "PRINT_LANDSCAPE",
+    "VOLANTES_FECHA_INICIAL",
+    "VOLANTES_FECHA_FINAL",
     "DEFAULT_TIMEOUT",
     "FORM_READY_DELAY_SECONDS",
+]
+
+OBSOLETE_ENV_KEYS = {
+    "PLANILLA_SALDO_PENDIENTE_MANUAL",
+    "PLANILLA_REANUDAR_OFICINA",
+    "PLANILLA_REANUDAR_USUARIO",
     "EXCEL_TEMPLATE_PATH",
     "EXCEL_OUTPUT_PATH",
-]
+}
 
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
+    "PRINT_SCALE": "70",
+    "PRINT_LANDSCAPE": "true",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
 }
@@ -61,6 +74,8 @@ def write_env_file(updated_values: dict[str, str]) -> None:
     existing = read_env_file()
     existing.update(updated_values)
     existing.pop("AUTOMATION_TOKEN", None)
+    for key in OBSOLETE_ENV_KEYS:
+        existing.pop(key, None)
 
     ordered_keys = [key for key in ENV_KEYS if key in existing]
     extra_keys = sorted(key for key in existing if key not in ordered_keys)
@@ -135,8 +150,10 @@ class PoliedroApp(ttk.Frame):
         headless.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
         self._add_entry(frame, "Timeout", "DEFAULT_TIMEOUT", 1, column=1, width=10)
-        self._add_path_entry(frame, "Excel base", "EXCEL_TEMPLATE_PATH", 2, column=0)
-        self._add_path_entry(frame, "Excel salida", "EXCEL_OUTPUT_PATH", 3, column=0, save_dialog=True)
+        self._add_entry(frame, "Escala impresion", "PRINT_SCALE", 1, column=3, width=10)
+        self._add_entry(frame, "Imprimir horizontal", "PRINT_LANDSCAPE", 2, column=0, width=10)
+        self._add_entry(frame, "Fecha inicial volantes", "VOLANTES_FECHA_INICIAL", 3, column=0, width=16)
+        self._add_entry(frame, "Fecha final volantes", "VOLANTES_FECHA_FINAL", 3, column=3, width=16)
 
     def _build_controls(self) -> None:
         frame = ttk.LabelFrame(self, text="Ejecucion", padding=12)
@@ -251,6 +268,25 @@ class PoliedroApp(ttk.Frame):
             messagebox.showerror(
                 "Faltan datos",
                 "Completa estos campos antes de iniciar:\n\n" + "\n".join(missing),
+            )
+            return False
+
+        fecha_inicial = values.get("VOLANTES_FECHA_INICIAL", "")
+        fecha_final = values.get("VOLANTES_FECHA_FINAL", "")
+        try:
+            inicio = datetime.strptime(fecha_inicial, "%d/%m/%Y") if fecha_inicial else None
+            fin = datetime.strptime(fecha_final, "%d/%m/%Y") if fecha_final else None
+        except ValueError:
+            messagebox.showerror(
+                "Fecha invalida",
+                "Las fechas de volantes deben estar en formato dd/mm/yyyy.",
+            )
+            return False
+
+        if inicio and fin and inicio > fin:
+            messagebox.showerror(
+                "Rango invalido",
+                "La fecha inicial de volantes no puede ser mayor que la fecha final.",
             )
             return False
 

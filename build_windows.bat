@@ -8,7 +8,8 @@ pyinstaller ^
   --noconsole ^
   --onefile ^
   --name AutomatizacionPoliedro ^
-  --add-data "app\template\plantillaExcel\M-GO-FT-02 Formato Consolidado pago de volantes V1.-1.xlsx;app\template\plantillaExcel" ^
+  --hidden-import="selenium.webdriver.chrome.webdriver" ^
+  --add-binary "app\browser\drivers\chromedriver.exe;app\browser\drivers" ^
   desktop_app.py
 
 echo.

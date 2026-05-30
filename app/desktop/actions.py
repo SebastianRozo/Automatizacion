@@ -1,8 +1,18 @@
 from pywinauto import Desktop
+from difflib import SequenceMatcher
 import os
 import time
 import unicodedata
 from app.config.settings import TNS_USERNAME, TNS_PASSWORD, TNS_OFFICE, TNS_APP_PATH
+
+try:
+    from rapidfuzz import fuzz as rapidfuzz_fuzz
+except ImportError:
+    rapidfuzz_fuzz = None
+
+
+TNS_MATCH_MIN_SCORE = 90
+TNS_NOMBRE_FILA_INDICE = 5
 
 
 #SCRIPT PARA MANEJAR TNS FUNCIONANDO 
@@ -46,6 +56,64 @@ def normalizar_texto_tns(texto: str) -> str:
     return " ".join(texto.upper().split())
 
 
+def calcular_similitud_nombres(usuario_volante: str, usuario_tns: str) -> float:
+    usuario_volante = normalizar_texto_tns(usuario_volante)
+    usuario_tns = normalizar_texto_tns(usuario_tns)
+    if not usuario_volante or not usuario_tns:
+        return 0.0
+
+    if rapidfuzz_fuzz is not None:
+        similitud_texto = float(rapidfuzz_fuzz.token_sort_ratio(usuario_volante, usuario_tns))
+    else:
+        volante_ordenado = " ".join(sorted(usuario_volante.split()))
+        tns_ordenado = " ".join(sorted(usuario_tns.split()))
+        similitud_texto = SequenceMatcher(None, volante_ordenado, tns_ordenado).ratio() * 100
+
+    similitud_palabras = calcular_similitud_por_palabras(usuario_volante, usuario_tns)
+    return max(similitud_texto, similitud_palabras)
+
+
+def calcular_similitud_palabra(palabra_volante: str, palabra_tns: str) -> float:
+    if rapidfuzz_fuzz is not None:
+        return float(rapidfuzz_fuzz.ratio(palabra_volante, palabra_tns))
+
+    return SequenceMatcher(None, palabra_volante, palabra_tns).ratio() * 100
+
+
+def calcular_similitud_por_palabras(usuario_volante: str, usuario_tns: str) -> float:
+    palabras_volante = usuario_volante.split()
+    palabras_tns = usuario_tns.split()
+    if not palabras_volante or not palabras_tns:
+        return 0.0
+
+    pares = []
+    for indice_volante, palabra_volante in enumerate(palabras_volante):
+        for indice_tns, palabra_tns in enumerate(palabras_tns):
+            pares.append((
+                calcular_similitud_palabra(palabra_volante, palabra_tns),
+                indice_volante,
+                indice_tns,
+            ))
+
+    pares.sort(reverse=True)
+    usados_volante = set()
+    usados_tns = set()
+    total = 0.0
+
+    for similitud, indice_volante, indice_tns in pares:
+        if indice_volante in usados_volante or indice_tns in usados_tns:
+            continue
+
+        usados_volante.add(indice_volante)
+        usados_tns.add(indice_tns)
+        total += similitud
+
+        if len(usados_volante) == len(palabras_volante):
+            break
+
+    return total / len(palabras_volante)
+
+
 def obtener_variantes_busqueda_usuario(usuario: str) -> list[str]:
     partes = " ".join((usuario or "").split()).split()
     variantes = []
@@ -77,6 +145,18 @@ def obtener_variantes_busqueda_usuario(usuario: str) -> list[str]:
 
         agregar_variante([*partes[-2:], *partes[:-2]])
         agregar_variante([partes[-1], *partes[:-1]])
+
+        for parte in partes[-2:]:
+            agregar_variante([parte])
+
+        for parte in partes[:-2]:
+            agregar_variante([parte])
+
+        for parte in partes:
+            if len(parte) >= 6:
+                agregar_variante([parte[:-1]])
+            if len(parte) >= 7:
+                agregar_variante([parte[:5]])
 
     return variantes
 
@@ -174,6 +254,52 @@ def obtener_filas_facturas_tns(ventana, limite: int = 20):
     return filas
 
 
+def obtener_textos_fila_tns(ventana, numero_fila: int) -> list[str]:
+    fila = ventana.child_window(title=f"Fila {numero_fila}", control_type="ListItem")
+    textos = []
+    vistos = set()
+
+    controles = [fila]
+    try:
+        controles.extend(fila.descendants())
+    except Exception:
+        pass
+
+    for control in controles:
+        try:
+            texto = obtener_texto_celda(control).strip()
+        except Exception:
+            continue
+
+        texto_normalizado = normalizar_texto_tns(texto)
+        if not texto_normalizado or texto_normalizado in vistos:
+            continue
+        if texto_normalizado == f"FILA {numero_fila}":
+            continue
+
+        vistos.add(texto_normalizado)
+        textos.append(texto)
+
+    return textos
+
+
+def obtener_nombre_fila_tns(ventana, numero_fila: int) -> str:
+    textos = obtener_textos_fila_tns(ventana, numero_fila)
+    if len(textos) > TNS_NOMBRE_FILA_INDICE:
+        return textos[TNS_NOMBRE_FILA_INDICE].strip()
+
+    if len(textos) > 8:
+        return textos[8].strip()
+
+    if textos and ";" in textos[0]:
+        columnas = [columna.strip() for columna in textos[0].split(";") if columna.strip()]
+        for indice in (4, 7, len(columnas) - 1):
+            if 0 <= indice < len(columnas):
+                return columnas[indice]
+
+    return ""
+
+
 def volver_a_resultados_tns(ventana) -> None:
     panel_atras = ventana.child_window(
         auto_id="windowsUIButtonPanelCloseButton",
@@ -262,8 +388,11 @@ def entrar_tns():
 
 
 def ingresar_a_cartera(ventana):
-    time.sleep(4)
-    ventana = Desktop(backend="uia").window(title="Portal TNS", auto_id="MainForm", control_type="Window")
+    # Esperar explícitamente a que aparezca la ventana principal en lugar de un sleep fijo
+    ventana = Desktop(backend="uia").window(title_re=".*Portal TNS.*", auto_id="MainForm", control_type="Window")
+    ventana.wait("exists visible", timeout=40)
+    time.sleep(1) # Pequeña pausa extra por si la interfaz está terminando de renderizar
+    
     empresa = ventana.child_window(title="FRONTERA CELULAR SAS", control_type="ListItem")
     empresa.click_input()
     time.sleep(2)
@@ -279,14 +408,17 @@ def ingresar_a_cartera(ventana):
     return ventana
 
 
-def manejar_tns(ventana, item: dict):
+def manejar_tns(ventana, item: dict, mantener_sesion=None):
     enfocar_tns(ventana)
     buscar = ventana.child_window(auto_id="Buscar", control_type="Edit")
     buscar.click_input()
     tipos_validos = {"portabilidad", "linea_nueva", "upgrade"}
     ultimo_resultado = None
+    mejor_candidato = None
 
     for busqueda_usuario in obtener_variantes_busqueda_usuario(item["usuario"]):
+        if mantener_sesion is not None:
+            mantener_sesion()
         buscar.click_input()
         buscar.set_edit_text(busqueda_usuario)
         time.sleep(1)
@@ -298,16 +430,41 @@ def manejar_tns(ventana, item: dict):
 
         filas = obtener_filas_facturas_tns(ventana)
         for numero_fila in filas:
+            if mantener_sesion is not None:
+                mantener_sesion()
+            nombre_tns = obtener_nombre_fila_tns(ventana, numero_fila)
+            similitud = calcular_similitud_nombres(item["usuario"], nombre_tns)
+            if mejor_candidato is None or similitud > mejor_candidato["similitud"]:
+                mejor_candidato = {
+                    "nombre": nombre_tns,
+                    "similitud": similitud,
+                    "busqueda": busqueda_usuario,
+                    "fila": numero_fila,
+                }
+
+            if similitud < TNS_MATCH_MIN_SCORE:
+                continue
+
             try:
                 resultado = leer_factura_tns(ventana, item, numero_fila)
             except Exception:
                 continue
 
+            resultado["usuario_tns"] = nombre_tns
+            resultado["similitud_usuario_tns"] = round(similitud, 1)
+            resultado["busqueda_tns"] = busqueda_usuario
             ultimo_resultado = resultado
             if resultado["tipo_plan"] in tipos_validos:
                 return resultado
 
     if ultimo_resultado is None:
+        if mejor_candidato is not None:
+            raise ValueError(
+                f"No se encontro el usuario en TNS con similitud >= {TNS_MATCH_MIN_SCORE}%: "
+                f"{item['usuario']}. Mejor candidato: "
+                f"{mejor_candidato['nombre'] or '[sin nombre]'} "
+                f"({mejor_candidato['similitud']:.1f}%)"
+            )
         raise ValueError(f"No se encontro el usuario en TNS: {item['usuario']}")
 
     return ultimo_resultado

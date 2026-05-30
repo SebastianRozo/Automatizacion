@@ -11,15 +11,9 @@ def _get_base_dir() -> Path:
 
 BASE_DIR = _get_base_dir()
 ENV_FILE = BASE_DIR / ".env"
+DIST_ENV_FILE = BASE_DIR / "dist" / ".env"
 
-
-def resource_path(relative_path: str) -> Path:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / relative_path
-    return BASE_DIR / relative_path
-
-
-def _load_env_file(env_file: Path) -> None:
+def _load_env_file(env_file: Path, override_empty: bool = False) -> None:
     if not env_file.exists():
         return
 
@@ -29,10 +23,15 @@ def _load_env_file(env_file: Path) -> None:
             continue
 
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key not in os.environ or (override_empty and not os.environ.get(key)):
+            os.environ[key] = value
 
 
 _load_env_file(ENV_FILE)
+if DIST_ENV_FILE != ENV_FILE:
+    _load_env_file(DIST_ENV_FILE, override_empty=True)
 
 POLIEDRO_URL = os.getenv(
     "POLIEDRO_URL", "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx"
@@ -43,18 +42,19 @@ DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "10"))
 FORM_READY_DELAY_SECONDS = float(os.getenv("FORM_READY_DELAY_SECONDS", "4"))
 PRINTER_NAME = os.getenv("PRINTER", "")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
+PRINT_SCALE = os.getenv("PRINT_SCALE", "70")
+PRINT_LANDSCAPE = os.getenv("PRINT_LANDSCAPE", "true").lower() == "true"
+CAPTURAS_DIR = Path(
+    os.getenv(
+        "CAPTURAS_DIR",
+        r"D:\Usuarios\ACTIVACIONES\Desktop\CAPTURA DE VOLANTES",
+    )
+)
+
+VOLANTES_FECHA_INICIAL = os.getenv("VOLANTES_FECHA_INICIAL", "")
+VOLANTES_FECHA_FINAL = os.getenv("VOLANTES_FECHA_FINAL", "")
 
 TNS_OFFICE = os.getenv("TNS_OFFICE", "")
 TNS_USERNAME = os.getenv("TNS_USERNAME", "")
 TNS_PASSWORD = os.getenv("TNS_PASSWORD", "")
 TNS_APP_PATH = os.getenv("TNS_APP_PATH", "")
-
-EXCEL_TEMPLATE_FILENAME = "M-GO-FT-02 Formato Consolidado pago de volantes V1.-1.xlsx"
-DEFAULT_EXCEL_TEMPLATE_PATH = resource_path(
-    f"app/template/plantillaExcel/{EXCEL_TEMPLATE_FILENAME}"
-)
-DEFAULT_EXCEL_OUTPUT_PATH = BASE_DIR / EXCEL_TEMPLATE_FILENAME
-EXCEL_TEMPLATE_PATH = Path(
-    os.getenv("EXCEL_TEMPLATE_PATH") or str(DEFAULT_EXCEL_TEMPLATE_PATH)
-)
-EXCEL_OUTPUT_PATH = Path(os.getenv("EXCEL_OUTPUT_PATH") or str(DEFAULT_EXCEL_OUTPUT_PATH))

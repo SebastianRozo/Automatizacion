@@ -24,6 +24,7 @@ from app.flows.flyers.helpers import construir_datos_volante, obtener_fechas_con
 
 
 VOLANTES_INDEX_PATH = "/Recaudo.PS/VolantesNIT/Index"
+USUARIOS_VOLANTE_OMITIDOS_POR_OFICINA = {("01", "45096700"), ("02", "45096700")}
 
 
 def obtener_oficina_desde_formulario(driver) -> str:
@@ -93,7 +94,6 @@ def get_flyers(driver) -> list[dict]:
                     time.sleep(1)
                     cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
 
-                    driver.execute_script("document.body.style.zoom='100%'")
                     time.sleep(2)
                     folder = get_office_folder(office_name)
                     fecha_archivo = fecha_consulta.strftime("%Y%m%d")
@@ -119,6 +119,13 @@ def get_flyers(driver) -> list[dict]:
                         dinero_volante = columnas[1].text.strip()
                         codigo_usuario = columnas[3].text.strip()
 
+                        if (office["office_code"], codigo_usuario) in USUARIOS_VOLANTE_OMITIDOS_POR_OFICINA:
+                            print(
+                                f"Volante omitido para usuario {codigo_usuario} "
+                                f"en oficina {office['office_code']} - {office_name}. Se sacara manual."
+                            )
+                            continue
+
                         datos_volante = construir_datos_volante(
                             codigo_usuario,
                             office["office_code"],
@@ -132,8 +139,7 @@ def get_flyers(driver) -> list[dict]:
                     volante_objetivo.click()
                     time.sleep(3)
                     # Se deja desactivado el envio a impresion por ahora.
-                    #click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
-                    driver.execute_script("document.body.style.zoom='50%'")
+                   # click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
                     time.sleep(2)
                     folder = get_office_folder(office_name)
                     capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{fecha_archivo}_{i}.png")
