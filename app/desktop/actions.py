@@ -1,5 +1,6 @@
 from pywinauto import Desktop
 import os
+import pprint
 import time
 from app.config.settings import TNS_USERNAME, TNS_PASSWORD, TNS_OFFICE, TNS_APP_PATH
 from app.desktop.helpers import (
@@ -11,6 +12,13 @@ from app.desktop.helpers import (
 )
 
 TNS_NOMBRE_FILA_INDICE = 5
+
+
+def log_tns(titulo: str, data=None) -> None:
+    print(f"\n========== {titulo} ==========", flush=True)
+    if data is not None:
+        pprint.pprint(data, width=120, sort_dicts=False)
+    print("=" * (22 + len(titulo)), flush=True)
 
 
 #SCRIPT PARA MANEJAR TNS FUNCIONANDO 
@@ -286,25 +294,55 @@ def manejar_tns(ventana, item: dict, mantener_sesion=None):
     tipos_validos = {"portabilidad", "linea_nueva", "upgrade"}
     ultimo_resultado = None
     mejor_candidato = None
+    variantes_busqueda = obtener_variantes_busqueda_usuario(item["usuario"])
 
-    for busqueda_usuario in obtener_variantes_busqueda_usuario(item["usuario"]):
+    log_tns("ITEM RECIBIDO PARA BUSCAR EN TNS", item)
+    log_tns(
+        "VARIANTES DE BUSQUEDA TNS",
+        {
+            "usuario_original": item.get("usuario"),
+            "variantes": variantes_busqueda,
+        },
+    )
+
+    for busqueda_usuario in variantes_busqueda:
         if mantener_sesion is not None:
             mantener_sesion()
+        print(f"[TNS] Buscando variante: {busqueda_usuario}", flush=True)
         buscar.click_input()
         buscar.set_edit_text(busqueda_usuario)
         time.sleep(1)
         buscar.type_keys("{ENTER}")
         time.sleep(2)
         if cerrar_popup_tns_si_existe(ventana):
+            print(f"[TNS] Popup cerrado para busqueda: {busqueda_usuario}", flush=True)
             buscar.click_input()
             continue
 
         filas = obtener_filas_facturas_tns(ventana)
+        log_tns(
+            "FILAS ENCONTRADAS EN TNS",
+            {
+                "busqueda": busqueda_usuario,
+                "filas": filas,
+                "cantidad": len(filas),
+            },
+        )
         for numero_fila in filas:
             if mantener_sesion is not None:
                 mantener_sesion()
             nombre_tns = obtener_nombre_fila_tns(ventana, numero_fila)
             similitud = calcular_similitud_nombres(item["usuario"], nombre_tns)
+            coincidencia = {
+                "usuario_poliedro": item.get("usuario"),
+                "busqueda_usada": busqueda_usuario,
+                "fila_tns": numero_fila,
+                "nombre_tns": nombre_tns,
+                "similitud": round(similitud, 1),
+                "minimo_requerido": TNS_MATCH_MIN_SCORE,
+                "aceptada_por_nombre": similitud >= TNS_MATCH_MIN_SCORE,
+            }
+            log_tns("COINCIDENCIA TNS", coincidencia)
             if mejor_candidato is None or similitud > mejor_candidato["similitud"]:
                 mejor_candidato = {
                     "nombre": nombre_tns,
@@ -318,18 +356,39 @@ def manejar_tns(ventana, item: dict, mantener_sesion=None):
 
             try:
                 resultado = leer_factura_tns(ventana, item, numero_fila)
-            except Exception:
+            except Exception as error:
+                log_tns(
+                    "ERROR LEYENDO FACTURA TNS",
+                    {
+                        **coincidencia,
+                        "error": str(error),
+                    },
+                )
                 continue
 
             resultado["usuario_tns"] = nombre_tns
             resultado["similitud_usuario_tns"] = round(similitud, 1)
             resultado["busqueda_tns"] = busqueda_usuario
+            log_tns(
+                "RESULTADO LEIDO DESDE TNS",
+                {
+                    "usuario_poliedro": item.get("usuario"),
+                    "usuario_tns": nombre_tns,
+                    "tipo_plan": resultado.get("tipo_plan"),
+                    "descripcion_tns": resultado.get("descripcion_tns"),
+                    "descripciones_tns": resultado.get("descripciones_tns"),
+                    "similitud": round(similitud, 1),
+                    "busqueda_tns": busqueda_usuario,
+                },
+            )
             ultimo_resultado = resultado
             if resultado["tipo_plan"] in tipos_validos:
+                log_tns("RESULTADO ACEPTADO TNS", resultado)
                 return resultado
 
     if ultimo_resultado is None:
         if mejor_candidato is not None:
+            log_tns("MEJOR CANDIDATO TNS NO ACEPTADO", mejor_candidato)
             raise ValueError(
                 f"No se encontro el usuario en TNS con similitud >= {TNS_MATCH_MIN_SCORE}%: "
                 f"{item['usuario']}. Mejor candidato: "
@@ -338,4 +397,5 @@ def manejar_tns(ventana, item: dict, mantener_sesion=None):
             )
         raise ValueError(f"No se encontro el usuario en TNS: {item['usuario']}")
 
+    log_tns("ULTIMO RESULTADO TNS SIN TIPO VALIDO", ultimo_resultado)
     return ultimo_resultado
