@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 from app.browser.actions import capture_screenshot, click, enfocar_chrome, wait_present
-from app.desktop.actions import entrar_tns, ingresar_a_cartera, manejar_tns
+from app.desktop.actions import entrar_tns, ingresar_a_cartera, manejar_tns, log_tns
 from app.config.selectors import (
     BUTTON_CONTINUAR,
     BUTTON_GENERAR_PLANILLA,
@@ -211,6 +211,20 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
         tipo_planillado = "1"
         planilla = "1"
 
+        log_tns("DICT VOLANTE RECIBIDO PARA PLANILLADO", datos_volante)
+        log_tns(
+            "PARAMETROS PLANILLADO ARMADOS",
+            {
+                "codigo_activacion": codigo_activacion,
+                "codigo_oficina": codigo_oficina,
+                "productos": productos,
+                "tipo_generacion": tipo_generacion,
+                "tipo_planillado": tipo_planillado,
+                "planilla": planilla,
+                "start_date": START_DATE,
+            },
+        )
+
         if not codigo_activacion:
             raise ValueError("Falta codigo de usuario en los datos del volante")
         if not codigo_oficina:
@@ -317,17 +331,37 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             time.sleep(2)
 
             resultados = obtener_filas_planilla(driver)
+            log_tns(
+                "RESULTADOS OBTENIDOS DE LA PLANILLA",
+                {
+                    "producto": producto,
+                    "codigo_oficina_planilla": codigo_oficina,
+                    "codigo_usuario_volante": codigo_activacion,
+                    "cantidad_resultados": len(resultados),
+                    "resultados": resultados,
+                },
+            )
             if len(resultados) == 1:
                 mantener_sesion_poliedro(driver, forzar=True)
                 if ventana_tns is None:
                     ventana_tns = entrar_tns()
                     ventana_tns = ingresar_a_cartera(ventana_tns)
                 try:
-                    manejar_tns(
+                    log_tns(
+                        "DICT UNICO QUE SE ENVIA A TNS",
+                        {
+                            "producto": producto,
+                            "codigo_oficina_planilla": codigo_oficina,
+                            "codigo_usuario_volante": codigo_activacion,
+                            "item": resultados[0],
+                        },
+                    )
+                    resultado_tns_unico = manejar_tns(
                         ventana_tns,
                         resultados[0],
                         mantener_sesion=lambda: mantener_sesion_poliedro(driver),
                     )
+                    log_tns("RESULTADO TNS PARA DICT UNICO", resultado_tns_unico)
                 except ValueError as error:
                     usuario_no_encontrado = resultados[0].copy()
                     usuario_no_encontrado["tipo_plan"] = "no_encontrado"
@@ -379,13 +413,33 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 ventana_tns = ingresar_a_cartera(ventana_tns)
             for item in resultados:
                 try:
+                    log_tns(
+                        "DICT QUE SE ENVIA A TNS",
+                        {
+                            "producto": producto,
+                            "codigo_oficina_planilla": codigo_oficina,
+                            "codigo_usuario_volante": codigo_activacion,
+                            "item": item,
+                        },
+                    )
                     resultado = manejar_tns(
                         ventana_tns,
                         item,
                         mantener_sesion=lambda: mantener_sesion_poliedro(driver),
                     )
+                    log_tns("RESULTADO DEVUELTO POR TNS", resultado)
                     mantener_sesion_poliedro(driver)
                 except ValueError as error:
+                    log_tns(
+                        "ERROR BUSCANDO ITEM EN TNS",
+                        {
+                            "producto": producto,
+                            "codigo_oficina_planilla": codigo_oficina,
+                            "codigo_usuario_volante": codigo_activacion,
+                            "item": item,
+                            "error": str(error),
+                        },
+                    )
                     resultado = item.copy()
                     resultado["tipo_plan"] = "no_encontrado"
                     resultado["error_tns"] = str(error)
