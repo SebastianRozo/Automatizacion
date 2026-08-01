@@ -208,7 +208,7 @@ class PoliedroApp(ttk.Frame):
     def _add_office_selector(self,parent:ttk.Frame,row:int):
         var = tk.StringVar()
         self.fields['TNS_OFFICE']= var
-        offices={f'{office["office_code"]} - {office['office_name']}' : office["office_code"] for office in OFFICES}
+        offices={f'{office["office_code"]} - {office['name']}' : office["office_code"] for office in OFFICES}
         ttk.label(parent, text="Oficina").grid(
             row = row , coliumn = 0, sticky = "w", padx=(0,8),pady = 4
         )
