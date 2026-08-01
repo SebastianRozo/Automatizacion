@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from urllib.parse import urljoin
 import time
 
@@ -61,11 +63,29 @@ def obtener_volantes_por_oficina(driver, codeplace, fecha_consulta):
         raise Exception(f"Error al obtener los volantes: {e}") from e
 
 
-def get_flyers(driver) -> list[dict]:
+def get_flyers(
+    driver,
+    selected_office_codes: list[str] | None = None,
+) -> list[dict]:
     try:
         datos_volantes = []
         fechas_consulta = obtener_fechas_consulta_volantes()
-        for office in OFFICES:
+        selected_codes = set(selected_office_codes or [])
+        unknown_codes = selected_codes.difference(
+            office["office_code"] for office in OFFICES
+        )
+        if unknown_codes:
+            raise ValueError(
+                "Codigos de oficina desconocidos: " + ", ".join(sorted(unknown_codes))
+            )
+
+        offices_to_process = (
+            [office for office in OFFICES if office["office_code"] in selected_codes]
+            if selected_codes
+            else OFFICES
+        )
+
+        for office in offices_to_process:
             codeplace = office["poliedro_code"]
             office_name = office["name"]
 
@@ -152,10 +172,15 @@ def get_flyers(driver) -> list[dict]:
         raise Exception(f"Error al obtener los volantes: {e}") from e
 
 
-def download_flyers(driver, migration_selector: str, flyers_selector: str) -> list[dict]:
+def download_flyers(
+    driver,
+    migration_selector: str,
+    flyers_selector: str,
+    selected_office_codes: list[str] | None = None,
+) -> list[dict]:
     try:
         click(driver, By.CSS_SELECTOR, migration_selector)
         click(driver, By.CSS_SELECTOR, flyers_selector)
-        return get_flyers(driver)
+        return get_flyers(driver, selected_office_codes)
     except Exception as e:
         raise Exception(f"Error al descargar los volantes: {e}") from e

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import queue
 import subprocess
@@ -89,6 +91,7 @@ class PoliedroApp(ttk.Frame):
         self.process: subprocess.Popen | None = None
         self.log_queue: queue.Queue[str] = queue.Queue()
         self.fields: dict[str, tk.StringVar] = {}
+        self.office_vars: dict[str, tk.BooleanVar] = {}
         self.headless_var = tk.BooleanVar(value=False)
         self.token_var = tk.StringVar()
 
@@ -125,6 +128,7 @@ class PoliedroApp(ttk.Frame):
         self._add_entry(frame, "URL", "POLIEDRO_URL", 0)
         self._add_entry(frame, "Usuario", "POLIEDRO_USERNAME", 1)
         self._add_entry(frame, "Contrasena", "POLIEDRO_PASSWORD", 2, show="*")
+        self._add_office_selector(frame, 3)
 
     def _build_tns_section(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="Configuracion TNS", padding=12)
@@ -132,7 +136,6 @@ class PoliedroApp(ttk.Frame):
         frame.columnconfigure(1, weight=1)
 
         self._add_entry(frame, "Oficina", "TNS_OFFICE", 0)
-        self._add_office_selector(frame,0)
         self._add_entry(frame, "Usuario", "TNS_USERNAME", 1)
         self._add_entry(frame, "Contrasena", "TNS_PASSWORD", 2, show="*")
         self._add_path_entry(frame, "Portal TNS", "TNS_APP_PATH", 3)
@@ -205,30 +208,34 @@ class PoliedroApp(ttk.Frame):
             state="disabled",
         )
         self.log_text.grid(row=0, column=0, sticky="nsew")
+
     def _add_office_selector(self, parent: ttk.Frame, row: int) -> None:
-        var = tk.StringVar()
-        self.fields["TNS_OFFICE"] = var
-        offices = {
-            f'{office["office_code"]} - {office["name"]}': office["office_code"]
+        frame = ttk.LabelFrame(parent, text="Oficinas a procesar", padding=8)
+        frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 4))
+
+        for index, office in enumerate(OFFICES):
+            office_code = office["office_code"]
+            var = tk.BooleanVar(value=False)
+            self.office_vars[office_code] = var
+            selector = ttk.Checkbutton(
+                frame,
+                text=f'{office_code} - {office["name"]}',
+                variable=var,
+            )
+            selector.grid(
+                row=index // 2,
+                column=index % 2,
+                sticky="w",
+                padx=8,
+                pady=2,
+            )
+
+    def _get_selected_office_codes(self) -> list[str]:
+        return [
+            office["office_code"]
             for office in OFFICES
-        }
-        ttk.Label(parent, text="Oficina").grid(
-            row=row, column=0, sticky="w", padx=(0, 8), pady=4
-        )
-        selector = ttk.Combobox(
-            parent,
-            textvariable = var,
-            values=list(offices.keys()),
-            state="readonly",
-        )
-        selector.grid(row=row, column=1, sticky="ew", pady=1)
-
-        def guardar_codigo(_event=None):
-            seleccion = selector.get()
-            if seleccion in offices:
-                var.set(offices[seleccion])
-
-        selector.bind("<<ComboboxSelected>>", guardar_codigo)
+            if self.office_vars[office["office_code"]].get()
+        ]
 
     def _add_entry(
         self,
@@ -324,11 +331,19 @@ class PoliedroApp(ttk.Frame):
         if not self._validate(values):
             return
 
+        selected_office_codes = self._get_selected_office_codes()
+        if not selected_office_codes:
+            messagebox.showwarning(
+                "Faltan oficinas",
+                "Selecciona al menos una oficina para procesar.",
+            )
+            return
+
         write_env_file(values)
         self._clear_logs()
         self._append_log("Configuracion guardada. Iniciando automatizacion...\n")
 
-        command = self._automation_command()
+        command = self._automation_command(selected_office_codes)
         env = os.environ.copy()
         env.update(values)
         if token:
@@ -402,10 +417,17 @@ class PoliedroApp(ttk.Frame):
         except Exception as error:
             self._append_log(f"No fue posible detener el proceso: {error}\n")
 
-    def _automation_command(self) -> list[str]:
+    def _automation_command(self, selected_office_codes: list[str]) -> list[str]:
+        office_argument = ",".join(selected_office_codes)
         if getattr(sys, "frozen", False):
-            return [sys.executable, "--run-automation"]
-        return [sys.executable, str(BASE_DIR / "desktop_app.py"), "--run-automation"]
+            return [sys.executable, "--run-automation", "--offices", office_argument]
+        return [
+            sys.executable,
+            str(BASE_DIR / "desktop_app.py"),
+            "--run-automation",
+            "--offices",
+            office_argument,
+        ]
 
     def _read_process_output(self) -> None:
         process = self.process

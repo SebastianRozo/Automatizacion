@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from selenium.webdriver.common.by import By
 import os
 import time
@@ -27,7 +29,10 @@ from app.flows.spreadsheets.planilla_actions import abrir_planillado
 TOKEN_REQUIRED_MESSAGE = "TOKEN_REQUIRED: Ingrese el token generado en Poliedro."
 
 
-def login(token: str | None = None) -> None:
+def login(
+    token: str | None = None,
+    selected_office_codes: list[str] | None = None,
+) -> None:
     driver = create_driver()
 
     try:
@@ -40,7 +45,12 @@ def login(token: str | None = None) -> None:
         if not token:
             raise ValueError("No se ingreso el token generado en Poliedro")
         submit_token(driver, token)
-        datos_volantes = download_flyers(driver, SELECTOR_MIGRATION_BUTTON, SELECTOR_FLYERS_NIT)
+        datos_volantes = download_flyers(
+            driver,
+            SELECTOR_MIGRATION_BUTTON,
+            SELECTOR_FLYERS_NIT,
+            selected_office_codes,
+        )
         time.sleep(3)
         abrir_planillado(driver)
 
