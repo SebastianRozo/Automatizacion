@@ -7,7 +7,7 @@ import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-
+from app.template.codes_places.main import OFFICES
 from app.config.settings import BASE_DIR, ENV_FILE
 
 
@@ -132,6 +132,7 @@ class PoliedroApp(ttk.Frame):
         frame.columnconfigure(1, weight=1)
 
         self._add_entry(frame, "Oficina", "TNS_OFFICE", 0)
+        self._add_office_selector(frame,0)
         self._add_entry(frame, "Usuario", "TNS_USERNAME", 1)
         self._add_entry(frame, "Contrasena", "TNS_PASSWORD", 2, show="*")
         self._add_path_entry(frame, "Portal TNS", "TNS_APP_PATH", 3)
@@ -204,6 +205,27 @@ class PoliedroApp(ttk.Frame):
             state="disabled",
         )
         self.log_text.grid(row=0, column=0, sticky="nsew")
+    def _add_office_selector(self,parent:ttk.Frame,row:int):
+        var = tk.StringVar()
+        self.fields['TNS_OFFICE']= var
+        offices={f'{office["office_code"]} - {office['office_name']}' : office["office_code"] for office in OFFICES}
+        ttk.label(parent, text="Oficina").grid(
+            row = row , coliumn = 0, sticky = "w", padx=(0,8),pady = 4
+        )
+        selector = ttk.Combobox(
+            parent,
+            textvariable = var,
+            values= list(offices.keys()),
+            state = "readonly"
+        )
+        selector.grid(row = row, column= 1,sticky ="ew",pady=1)
+    
+    def guardar_codigo(_event=None):
+        seleccion=selector.get()
+        if seleccion in offices:
+            var.set(offices[seleccion])
+
+        selector.bind("<<ComboboxSelected>>", guardar_codigo)
 
     def _add_entry(
         self,
