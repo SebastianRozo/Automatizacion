@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 
@@ -15,6 +17,25 @@ def parsear_fecha(fecha: str) -> datetime:
     fecha = limpiar_texto(fecha)
     fecha = fecha.replace("a.m.", "AM").replace("p.m.", "PM")
     return datetime.strptime(fecha, "%d/%m/%Y %I:%M:%S %p")
+
+
+def clasificar_fecha_activacion(fecha_activacion: str, fecha_volante: str) -> str:
+    fecha_activacion_dia = parsear_fecha(fecha_activacion).date()
+    try:
+        fecha_volante_dia = datetime.strptime(
+            limpiar_texto(fecha_volante),
+            "%d/%m/%Y",
+        ).date()
+    except ValueError as error:
+        raise ValueError(
+            f"Fecha de volante invalida: {fecha_volante!r}. Usa dd/mm/yyyy."
+        ) from error
+
+    if fecha_activacion_dia < fecha_volante_dia:
+        return "anterior"
+    if fecha_activacion_dia > fecha_volante_dia:
+        return "posterior"
+    return "misma_fecha"
 
 
 def obtener_valor_select(datos_volante: dict | None, *claves, default: str | None = None) -> str | None:

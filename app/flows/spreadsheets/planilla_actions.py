@@ -27,6 +27,7 @@ from app.config.selectors import (
 )
 from app.config.settings import FORM_READY_DELAY_SECONDS
 from app.flows.spreadsheets.helpers import (
+    clasificar_fecha_activacion,
     limpiar_texto,
     normalizar_dinero,
     parsear_fecha,
@@ -43,7 +44,7 @@ def es_fecha_activacion_hoy(fecha_activacion: str) -> bool:
         return False
 
 
-def obtener_filas_planilla(driver) -> list[dict]:
+def obtener_filas_planilla(driver, fecha_volante: str) -> list[dict]:
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
     filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
     resultados = []
@@ -55,12 +56,23 @@ def obtener_filas_planilla(driver) -> list[dict]:
         if es_fecha_activacion_hoy(fecha_activacion):
             print(f"Fila omitida por ser activacion de hoy: {fecha_activacion}")
             continue
+        relacion_fecha = clasificar_fecha_activacion(fecha_activacion, fecha_volante)
+        if relacion_fecha == "posterior":
+            print(
+                "Fila omitida por ser posterior a la fecha del volante: "
+                f"{fecha_activacion} > {fecha_volante}"
+            )
+            continue
 
-        resultados.append({
+        resultado = {
             "usuario": limpiar_texto(columnas[4].text),
             "fecha_activacion": fecha_activacion,
             "vr_total_planilla": normalizar_dinero(columnas[12].text),
-        })
+        }
+        if relacion_fecha == "anterior":
+            resultado["tipo_plan"] = "portabilidad"
+            resultado["clasificacion_origen"] = "fecha_anterior_al_volante"
+        resultados.append(resultado)
     return resultados
 
 
@@ -97,7 +109,7 @@ def get_checkbox_por_usuario(driver, usuario_objetivo: str, fecha_activacion_obj
     return None
 
 
-def validate_money(driver, dinero_volante: int) -> dict:
+def validate_money(driver, dinero_volante: int, fecha_volante: str) -> dict:
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
     filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
     suma_planilla = 0
@@ -111,6 +123,8 @@ def validate_money(driver, dinero_volante: int) -> dict:
             usuario = limpiar_texto(columnas[4].text)
             fecha_activacion = limpiar_texto(columnas[8].text)
             if es_fecha_activacion_hoy(fecha_activacion):
+                continue
+            if clasificar_fecha_activacion(fecha_activacion, fecha_volante) == "posterior":
                 continue
             plan = limpiar_texto(columnas[9].text)
             vr_total = normalizar_dinero(columnas[12].text)
@@ -147,9 +161,9 @@ def contar_planes_marcados(driver) -> int:
     return cantidad
 
 
-def obtener_porta_antigua(driver, resultados_tns: list[dict]):
-    tipos_por_usuario = {
-        item["usuario"]: item["tipo_plan"]
+def obtener_porta_antigua(driver, resultados_tns: list[dict], fecha_volante: str):
+    tipos_por_fila = {
+        (item["usuario"], item.get("fecha_activacion", "")): item["tipo_plan"]
         for item in resultados_tns
     }
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
@@ -163,10 +177,15 @@ def obtener_porta_antigua(driver, resultados_tns: list[dict]):
         fecha_activacion = limpiar_texto(columnas[8].text)
         if es_fecha_activacion_hoy(fecha_activacion):
             continue
+        if clasificar_fecha_activacion(fecha_activacion, fecha_volante) == "posterior":
+            continue
         plan = limpiar_texto(columnas[9].text)
         vr_total = normalizar_dinero(columnas[12].text)
         checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-        if tipos_por_usuario.get(usuario) == "portabilidad" and checkbox.is_selected():
+        if (
+            tipos_por_fila.get((usuario, fecha_activacion)) == "portabilidad"
+            and checkbox.is_selected()
+        ):
             portabilidades.append({
                 "usuario": usuario,
                 "fecha_activacion": fecha_activacion,
@@ -182,14 +201,18 @@ def obtener_porta_antigua(driver, resultados_tns: list[dict]):
     )
 
 
-def contar_portabilidades_restantes(driver, resultados_tns: list[dict]) -> int:
-    usuarios_portabilidad = {
-        item["usuario"]
+def contar_portabilidades_restantes(
+    driver,
+    resultados_tns: list[dict],
+    fecha_volante: str,
+) -> int:
+    filas_portabilidad = {
+        (item["usuario"], item.get("fecha_activacion", ""))
         for item in resultados_tns
         if item.get("tipo_plan") == "portabilidad"
     }
 
-    if not usuarios_portabilidad:
+    if not filas_portabilidad:
         return 0
 
     tabla = driver.find_element(By.ID, TABLE_PLANILLA)
@@ -205,9 +228,11 @@ def contar_portabilidades_restantes(driver, resultados_tns: list[dict]) -> int:
         fecha_activacion = limpiar_texto(columnas[8].text)
         if es_fecha_activacion_hoy(fecha_activacion):
             continue
+        if clasificar_fecha_activacion(fecha_activacion, fecha_volante) == "posterior":
+            continue
         checkbox = columnas[0].find_element(By.CSS_SELECTOR, "input[type='checkbox']")
 
-        if usuario in usuarios_portabilidad and not checkbox.is_selected():
+        if (usuario, fecha_activacion) in filas_portabilidad and not checkbox.is_selected():
             cantidad += 1
 
     return cantidad

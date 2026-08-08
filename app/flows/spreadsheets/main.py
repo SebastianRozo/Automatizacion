@@ -272,6 +272,7 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             "planilla_code",
             "office_code",
         )
+        fecha_volante = obtener_valor_select(datos_volante, "fecha")
         productos = obtener_valores_producto(datos_volante)
         tipo_generacion = "1"
         tipo_planillado = "1"
@@ -283,6 +284,7 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             {
                 "codigo_activacion": codigo_activacion,
                 "codigo_oficina": codigo_oficina,
+                "fecha_volante": fecha_volante,
                 "productos": productos,
                 "tipo_generacion": tipo_generacion,
                 "tipo_planillado": tipo_planillado,
@@ -295,6 +297,8 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             raise ValueError("Falta codigo de usuario en los datos del volante")
         if not codigo_oficina:
             raise ValueError("Falta codigo de oficina en los datos del volante")
+        if not fecha_volante:
+            raise ValueError("Falta la fecha seleccionada en los datos del volante")
 
         dinero_volante = None
         if datos_volante is not None:
@@ -396,88 +400,46 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             check_first_checkbox(driver)
             time.sleep(2)
 
-            resultados = obtener_filas_planilla(driver)
+            resultados = obtener_filas_planilla(driver, fecha_volante)
             log_tns(
                 "RESULTADOS OBTENIDOS DE LA PLANILLA",
                 {
                     "producto": producto,
                     "codigo_oficina_planilla": codigo_oficina,
                     "codigo_usuario_volante": codigo_activacion,
+                    "fecha_volante": fecha_volante,
                     "cantidad_resultados": len(resultados),
                     "resultados": resultados,
                 },
             )
-            if len(resultados) == 1:
+
+            resultados_tns = [
+                item.copy()
+                for item in resultados
+                if item.get("tipo_plan") == "portabilidad"
+            ]
+            resultados_a_consultar_tns = [
+                item
+                for item in resultados
+                if item.get("tipo_plan") != "portabilidad"
+            ]
+
+            if resultados_tns:
+                log_tns(
+                    "FILAS ANTERIORES CLASIFICADAS COMO PORTABILIDAD",
+                    {
+                        "fecha_volante": fecha_volante,
+                        "cantidad": len(resultados_tns),
+                        "resultados": resultados_tns,
+                    },
+                )
+
+            if resultados_a_consultar_tns:
                 mantener_sesion_poliedro(driver, forzar=True)
                 if ventana_tns is None:
                     ventana_tns = entrar_tns()
                     ventana_tns = ingresar_a_cartera(ventana_tns)
-                try:
-                    log_tns(
-                        "DICT UNICO QUE SE ENVIA A TNS",
-                        {
-                            "producto": producto,
-                            "codigo_oficina_planilla": codigo_oficina,
-                            "codigo_usuario_volante": codigo_activacion,
-                            "item": resultados[0],
-                        },
-                    )
-                    resultado_tns_unico = manejar_tns(
-                        ventana_tns,
-                        resultados[0],
-                        mantener_sesion=lambda: mantener_sesion_poliedro(driver),
-                    )
-                    log_tns("RESULTADO TNS PARA DICT UNICO", resultado_tns_unico)
-                except ValueError as error:
-                    usuario_no_encontrado = resultados[0].copy()
-                    usuario_no_encontrado["tipo_plan"] = "no_encontrado"
-                    usuario_no_encontrado["error_tns"] = str(error)
-                    usuario_no_encontrado["accion"] = "Se omite la oficina y se sacara manual"
-                    usuario_no_encontrado["codigo_oficina_planilla"] = codigo_oficina
-                    usuario_no_encontrado["codigo_usuario_volante"] = codigo_activacion
-                    usuario_no_encontrado["producto"] = producto
-                    usuario_no_encontrado["fecha_volante"] = (
-                        datos_volante.get("fecha") if datos_volante else ""
-                    )
-                    guardar_usuarios_no_encontrados([usuario_no_encontrado])
-                    print(
-                        "Usuario no encontrado en TNS. "
-                        f"Se omite la oficina y se sacara manual: {resultados[0]['usuario']}"
-                    )
-                    try:
-                        abrir_planillado(driver, forzar=True)
-                    except Exception as error_formulario:
-                        print(f"No fue posible volver al formulario de planillado: {error_formulario}")
-                    return ventana_tns
-
-                checkbox = get_checkbox_por_usuario(
-                    driver,
-                    resultados[0]["usuario"],
-                    resultados[0].get("fecha_activacion"),
-                )
-                if checkbox and checkbox.is_selected():
-                    checkbox.click()
-                validacion = validate_money(driver, saldo_pendiente)
-                if not validacion["coincide"]:
-                    print(
-                        f"Producto {producto}: un solo item por {validacion['suma_planilla']} "
-                        f"no cuadra con saldo pendiente {saldo_pendiente}"
-                    )
-                valores_planilla = generar_e_imprimir_planilla(driver, ajustar_zoom=True)
-                guardar_progreso_planilla(datos_volante, producto, valores_planilla)
-                print(
-                    f"Producto {producto}: generado {valores_planilla['valor_total']}. "
-                    f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
-                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}."
-                )
-                return ventana_tns
-
-            resultados_tns = []
-            mantener_sesion_poliedro(driver, forzar=True)
-            if ventana_tns is None:
-                ventana_tns = entrar_tns()
-                ventana_tns = ingresar_a_cartera(ventana_tns)
-            for item in resultados:
+            for item in resultados_a_consultar_tns:
                 try:
                     log_tns(
                         "DICT QUE SE ENVIA A TNS",
@@ -513,9 +475,7 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     resultado["codigo_oficina_planilla"] = codigo_oficina
                     resultado["codigo_usuario_volante"] = codigo_activacion
                     resultado["producto"] = producto
-                    resultado["fecha_volante"] = (
-                        datos_volante.get("fecha") if datos_volante else ""
-                    )
+                    resultado["fecha_volante"] = fecha_volante
 
                 resultados_tns.append(resultado)
 
@@ -555,22 +515,32 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 return ventana_tns
 
             enfocar_chrome(driver)
-            validacion = validate_money(driver, saldo_pendiente)
-            print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
+            validacion = validate_money(driver, saldo_pendiente, fecha_volante)
+            print(
+                "Portabilidades restantes: "
+                f"{contar_portabilidades_restantes(driver, resultados_tns, fecha_volante)}"
+            )
             todas_son_portabilidad = (
                 resultados_tns
                 and all(item.get("tipo_plan") == "portabilidad" for item in resultados_tns)
             )
 
             while not validacion["coincide"] and validacion["faltante"] > 0:
-                porta_antigua = obtener_porta_antigua(driver, resultados_tns)
+                porta_antigua = obtener_porta_antigua(
+                    driver,
+                    resultados_tns,
+                    fecha_volante,
+                )
                 if porta_antigua is None:
                     break
 
                 if porta_antigua["checkbox"].is_selected():
                     porta_antigua["checkbox"].click()
-                validacion = validate_money(driver, saldo_pendiente)
-                print(f"Portabilidades restantes: {contar_portabilidades_restantes(driver, resultados_tns)}")
+                validacion = validate_money(driver, saldo_pendiente, fecha_volante)
+                print(
+                    "Portabilidades restantes: "
+                    f"{contar_portabilidades_restantes(driver, resultados_tns, fecha_volante)}"
+                )
 
             if todas_son_portabilidad and not validacion["coincide"]:
                 print(
