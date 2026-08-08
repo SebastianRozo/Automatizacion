@@ -1,0 +1,55 @@
+name: Build Windows executable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --noconsole `
+            --onefile `
+            --name AutomatizacionPoliedro `
+            --hidden-import "selenium.webdriver.chrome.webdriver" `
+            --add-binary "app/browser/drivers/chromedriver.exe;app/browser/drivers" `
+            desktop_app.py
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutomatizacionPoliedro-windows
+          path: dist/AutomatizacionPoliedro.exe
+          if-no-files-found: error
+          retention-days: 30
