@@ -18,6 +18,9 @@ from app.config.selectors import (
     VALOR_TOTAL_TABLA_PLANILLA,
     TARJETA_CREDITO_TABLA_PLANILLA
 )
+from app.config.settings import (
+    PRINT_LANDSCAPE,
+)
 from app.flows.spreadsheets.helpers import (
     normalizar_dinero,
     obtener_valor_select,
@@ -88,7 +91,8 @@ def obtener_valor_tarjeta_credito(driver) -> int:
         return 0
 
 
-def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
+def aplicar_configuracion_impresion(driver) -> None:
+    orientacion = "landscape" if PRINT_LANDSCAPE else "portrait"
     driver.execute_script(
         """
         const previous = document.getElementById('automatizacion-print-style');
@@ -98,107 +102,38 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
         style.id = 'automatizacion-print-style';
         style.textContent = `
             @page {
-                size: letter portrait;
-                margin: 5mm;
+                size: letter ${arguments[0]};
+                margin: 6mm;
             }
 
             @media print {
                 html, body {
-                    width: 100% !important;
-                    min-width: 0 !important;
-                    max-width: none !important;
+                    width: auto !important;
                     height: auto !important;
-                    min-height: 0 !important;
                     margin: 0 !important;
                     padding: 0 !important;
                     overflow: visible !important;
                 }
 
                 body {
-                    background: #fff !important;
-                    color: #000 !important;
-                    font-size: 9pt !important;
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
-                }
-
-                .container,
-                .container-fluid,
-                .content,
-                .main-content,
-                form {
-                    width: 100% !important;
-                    min-width: 0 !important;
-                    max-width: none !important;
-                    margin-left: 0 !important;
-                    margin-right: 0 !important;
-                    overflow: visible !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
                 }
 
                 table {
-                    width: 100% !important;
-                    min-width: 0 !important;
                     max-width: 100% !important;
                     border-collapse: collapse !important;
-                    table-layout: auto !important;
-                    break-inside: auto;
-                    page-break-inside: auto;
                 }
 
-                thead {
-                    display: table-header-group;
-                }
-
-                tfoot {
-                    display: table-footer-group;
-                }
-
-                tr, img {
-                    break-inside: avoid !important;
-                    page-break-inside: avoid !important;
-                }
-
-                td, th {
-                    height: auto !important;
-                    padding: 2px 3px !important;
-                    line-height: 1.15 !important;
-                    white-space: normal !important;
-                    overflow: visible !important;
-                    overflow-wrap: anywhere;
-                }
-
-                img, svg, canvas {
-                    max-width: 100% !important;
-                    height: auto !important;
-                }
-
-                button,
-                input[type='button'],
-                input[type='submit'],
-                .no-print {
-                    display: none !important;
-                }
-
-                html.automatizacion-print-compact body {
-                    font-size: 8.5pt !important;
-                }
-
-                html.automatizacion-print-compact table,
-                html.automatizacion-print-compact td,
-                html.automatizacion-print-compact th {
-                    font-size: 8pt !important;
-                    line-height: 1.1 !important;
+                tr, td, th, img, fieldset, .panel, .table {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
                 }
             }
         `;
         document.head.appendChild(style);
-        document.documentElement.classList.toggle(
-            'automatizacion-print-compact',
-            Boolean(arguments[0])
-        );
-        window.scrollTo(0, 0);
         """,
-        ajustar_zoom,
+        orientacion,
     )
 
 
@@ -235,11 +170,10 @@ def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = Fa
 
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
     time.sleep(espera)
-    aplicar_configuracion_impresion(driver, ajustar_zoom=ajustar_zoom)
-    for numero_copia in range(1, 4):
-        print(f"Enviando copia {numero_copia} de 3 a la impresora.")
+    aplicar_configuracion_impresion(driver)
+    for _ in range(3):
         driver.execute_script("window.print();")
-        time.sleep(3)
+        time.sleep(2)
     time.sleep(espera)
     click(driver, By.ID, BUTTON_CONTINUAR, timeout=10)
     time.sleep(espera)

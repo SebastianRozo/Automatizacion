@@ -3,29 +3,12 @@ from selenium.webdriver.chrome.service import Service
 import json
 import sys
 from pathlib import Path
-from app.config.settings import HEADLESS, PRINT_SCALE, PRINTER_NAME
-
-
-LETTER_MEDIA_SIZE = {
-    "name": "NA_LETTER",
-    "width_microns": 215900,
-    "height_microns": 279400,
-    "is_default": True,
-    "custom_display_name": "Carta",
-}
+from app.config.settings import HEADLESS, PRINT_LANDSCAPE, PRINT_SCALE, PRINTER_NAME
 
 
 def _resource_path(relative_path: str) -> Path:
     base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
     return base_path / relative_path
-
-
-def _normalizar_escala_impresion(value: str) -> str:
-    try:
-        escala = int(value)
-    except (TypeError, ValueError):
-        escala = 70
-    return str(min(max(escala, 10), 200))
 
 
 def create_driver() -> webdriver.Chrome:
@@ -39,17 +22,12 @@ def create_driver() -> webdriver.Chrome:
             }
         ],
         "selectedDestinationId": PRINTER_NAME,
-        "mediaSize": LETTER_MEDIA_SIZE,
-        "marginsType": 2,
         "isHeaderFooterEnabled": False,
         "isCssBackgroundEnabled": True,
-        "isLandscapeEnabled": False,
-        "isColorEnabled": True,
-        "isCollateEnabled": True,
-        "isDuplexEnabled": False,
-        "scaling": _normalizar_escala_impresion(PRINT_SCALE),
-        "scalingType": 4,
-        "scalingTypePdf": 1,
+        "landscape": PRINT_LANDSCAPE,
+        "marginsType": 2,
+        "scaling": PRINT_SCALE,
+        "scalingType": 3,
         "version": 2,
     }
     prefs = {

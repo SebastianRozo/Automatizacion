@@ -24,6 +24,7 @@ ENV_KEYS = [
     "PRINTER",
     "HEADLESS",
     "PRINT_SCALE",
+    "PRINT_LANDSCAPE",
     "VOLANTES_FECHA_INICIAL",
     "VOLANTES_FECHA_FINAL",
     "DEFAULT_TIMEOUT",
@@ -36,13 +37,13 @@ OBSOLETE_ENV_KEYS = {
     "PLANILLA_REANUDAR_USUARIO",
     "EXCEL_TEMPLATE_PATH",
     "EXCEL_OUTPUT_PATH",
-    "PRINT_LANDSCAPE",
 }
 
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
     "PRINT_SCALE": "70",
+    "PRINT_LANDSCAPE": "true",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
 }
@@ -154,6 +155,7 @@ class PoliedroApp(ttk.Frame):
 
         self._add_entry(frame, "Timeout", "DEFAULT_TIMEOUT", 1, column=1, width=10)
         self._add_entry(frame, "Escala impresion", "PRINT_SCALE", 1, column=3, width=10)
+        self._add_entry(frame, "Imprimir horizontal", "PRINT_LANDSCAPE", 2, column=0, width=10)
         self._add_entry(frame, "Fecha inicial volantes", "VOLANTES_FECHA_INICIAL", 3, column=0, width=16)
         self._add_entry(frame, "Fecha final volantes", "VOLANTES_FECHA_FINAL", 3, column=3, width=16)
 
