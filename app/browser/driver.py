@@ -16,7 +16,7 @@ def _normalizar_escala_impresion(value: str) -> str:
     try:
         escala = int(value)
     except (TypeError, ValueError):
-        escala = 70
+        escala = 50
     return str(min(max(escala, 10), 200))
 
 

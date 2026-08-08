@@ -42,10 +42,12 @@ OBSOLETE_ENV_KEYS = {
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
-    "PRINT_SCALE": "70",
+    "PRINT_SCALE": "50",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
 }
+
+PRINT_LAYOUT_VERSION = "2"
 
 REQUIRED_FIELDS = {
     "POLIEDRO_USERNAME": "Usuario Poliedro",
@@ -68,6 +70,8 @@ def read_env_file() -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
+    if values.get("PRINT_LAYOUT_VERSION") != PRINT_LAYOUT_VERSION:
+        values["PRINT_SCALE"] = "50"
     return values
 
 
@@ -75,6 +79,7 @@ def write_env_file(updated_values: dict[str, str]) -> None:
     existing = read_env_file()
     existing.update(updated_values)
     existing.pop("AUTOMATION_TOKEN", None)
+    existing["PRINT_LAYOUT_VERSION"] = PRINT_LAYOUT_VERSION
     for key in OBSOLETE_ENV_KEYS:
         existing.pop(key, None)
 

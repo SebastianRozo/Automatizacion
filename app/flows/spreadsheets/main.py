@@ -2,6 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+import re
 import time
 from datetime import datetime
 
@@ -39,6 +40,8 @@ from app.storage.spreadsheet_progress import (
     registrar_planilla_generada,
 )
 from app.storage.not_found_users import guardar_usuarios_no_encontrados
+from app.storage.main import get_office_folder
+from app.template.codes_places.main import OFFICES
 
 
 POLIEDRO_KEEPALIVE_INTERVAL_SECONDS = 45
@@ -114,6 +117,10 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
                     overflow: visible !important;
                 }
 
+                *, *::before, *::after {
+                    box-sizing: border-box !important;
+                }
+
                 body {
                     background: #fff !important;
                     color: #000 !important;
@@ -140,7 +147,7 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
                     min-width: 0 !important;
                     max-width: 100% !important;
                     border-collapse: collapse !important;
-                    table-layout: auto !important;
+                    table-layout: fixed !important;
                     break-inside: auto;
                     page-break-inside: auto;
                 }
@@ -165,6 +172,8 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
                     white-space: normal !important;
                     overflow: visible !important;
                     overflow-wrap: anywhere;
+                    word-break: break-word !important;
+                    vertical-align: middle !important;
                 }
 
                 img, svg, canvas {
@@ -224,7 +233,50 @@ def guardar_progreso_planilla(
     print(f"Progreso guardado del volante. Valor aplicado acumulado: {valor_aplicado}")
 
 
-def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = False) -> dict:
+def _limpiar_parte_nombre_archivo(valor: object) -> str:
+    texto = re.sub(r'[<>:"/\\|?*]+', "_", str(valor or "").strip())
+    return "_".join(texto.split()) or "sin_dato"
+
+
+def guardar_captura_planilla_simulada(
+    driver,
+    datos_volante: dict | None,
+    producto: str,
+) -> None:
+    if not datos_volante:
+        print("No se guardo captura simulada: faltan los datos del volante.")
+        return
+
+    office_code = str(datos_volante.get("office_code", "")).strip()
+    oficina = next(
+        (
+            item["name"]
+            for item in OFFICES
+            if item["office_code"] == office_code
+        ),
+        office_code or "SIN OFICINA",
+    )
+    fecha_volante = str(datos_volante.get("fecha", "")).strip()
+    folder = get_office_folder(oficina, fecha_volante or None)
+    usuario = datos_volante.get("codigo_usuario", datos_volante.get("usuario", ""))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = (
+        f"planilla_simulada_{_limpiar_parte_nombre_archivo(oficina)}_"
+        f"{_limpiar_parte_nombre_archivo(usuario)}_producto_"
+        f"{_limpiar_parte_nombre_archivo(producto)}_{timestamp}.png"
+    )
+    screenshot_path = folder / filename
+    capture_screenshot(driver, str(screenshot_path))
+    print(f"Captura de planilla simulada guardada en: {screenshot_path}")
+
+
+def generar_e_imprimir_planilla(
+    driver,
+    datos_volante: dict | None,
+    producto: str,
+    espera: int = 5,
+    ajustar_zoom: bool = False,
+) -> dict:
     enfocar_chrome(driver)
     click(driver, By.ID, BUTTON_SIMULAR, timeout=10)
     time.sleep(espera)
@@ -232,6 +284,7 @@ def generar_e_imprimir_planilla(driver, espera: int = 5, ajustar_zoom: bool = Fa
     valor_total = normalizar_dinero(total.text)
     valor_tarjeta_credito = obtener_valor_tarjeta_credito(driver)
     valor_para_volante = max(valor_total - valor_tarjeta_credito, 0)
+    guardar_captura_planilla_simulada(driver, datos_volante, producto)
 
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
     time.sleep(espera)
@@ -371,7 +424,13 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             wait_present(driver, By.ID, TABLE_PLANILLA)
 
             if volante_en_cero:
-                valores_planilla = generar_e_imprimir_planilla(driver, espera=2, ajustar_zoom=True)
+                valores_planilla = generar_e_imprimir_planilla(
+                    driver,
+                    datos_volante,
+                    producto,
+                    espera=2,
+                    ajustar_zoom=True,
+                )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
                 print(
                     f"Volante en 0: producto {producto} generado por tarjeta credito. "
@@ -381,7 +440,12 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 continue
 
             if producto in {"3", "7"}:
-                valores_planilla = generar_e_imprimir_planilla(driver, espera=2)
+                valores_planilla = generar_e_imprimir_planilla(
+                    driver,
+                    datos_volante,
+                    producto,
+                    espera=2,
+                )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
                 saldo_pendiente -= valores_planilla["valor_para_volante"]
                 print(
@@ -549,7 +613,12 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 )
 
             if validacion["coincide"]  or todas_son_portabilidad:
-                valores_planilla = generar_e_imprimir_planilla(driver, ajustar_zoom=True)
+                valores_planilla = generar_e_imprimir_planilla(
+                    driver,
+                    datos_volante,
+                    producto,
+                    ajustar_zoom=True,
+                )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
                 print(
                     f"Producto {producto}: generado {valores_planilla['valor_total']}. "

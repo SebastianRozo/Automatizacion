@@ -115,7 +115,7 @@ def get_flyers(
                     cantidad_de_volantes = driver.find_elements(By.CSS_SELECTOR, SELECT_ALL_VOLANTES)
 
                     time.sleep(2)
-                    folder = get_office_folder(office_name)
+                    folder = get_office_folder(office_name, fecha_consulta)
                     fecha_archivo = fecha_consulta.strftime("%Y%m%d")
                     capture_screenshot(driver, f"{folder}/Lista_Volantes_{office_name}_{fecha_archivo}_{i}.png")
                     time.sleep(1)
@@ -161,7 +161,7 @@ def get_flyers(
                     # Se deja desactivado el envio a impresion por ahora.
                    # click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
                     time.sleep(2)
-                    folder = get_office_folder(office_name)
+                    folder = get_office_folder(office_name, fecha_consulta)
                     capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{fecha_archivo}_{i}.png")
                     time.sleep(1)
                     click(driver, By.ID, BOTON_CANCELAR_VOLANTE)
