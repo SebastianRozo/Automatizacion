@@ -43,7 +43,6 @@ FORM_READY_DELAY_SECONDS = float(os.getenv("FORM_READY_DELAY_SECONDS", "4"))
 PRINTER_NAME = os.getenv("PRINTER", "")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 PRINT_SCALE = os.getenv("PRINT_SCALE", "70")
-PRINT_LANDSCAPE = os.getenv("PRINT_LANDSCAPE", "true").lower() == "true"
 CAPTURAS_DIR = Path(
     os.getenv(
         "CAPTURAS_DIR",
