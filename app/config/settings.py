@@ -43,12 +43,14 @@ FORM_READY_DELAY_SECONDS = float(os.getenv("FORM_READY_DELAY_SECONDS", "4"))
 PRINTER_NAME = os.getenv("PRINTER", "")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 PRINT_SCALE = os.getenv("PRINT_SCALE", "70")
-CAPTURAS_DIR = Path(
-    os.getenv(
-        "CAPTURAS_DIR",
-        r"D:\Usuarios\ACTIVACIONES\Desktop\CAPTURA DE VOLANTES",
-    )
+_capturas_dir_value = os.getenv("CAPTURAS_DIR", "").strip()
+CAPTURAS_DIR = (
+    Path(_capturas_dir_value).expanduser()
+    if _capturas_dir_value
+    else BASE_DIR / "CAPTURA DE VOLANTES"
 )
+if not CAPTURAS_DIR.is_absolute():
+    CAPTURAS_DIR = BASE_DIR / CAPTURAS_DIR
 
 VOLANTES_FECHA_INICIAL = os.getenv("VOLANTES_FECHA_INICIAL", "")
 VOLANTES_FECHA_FINAL = os.getenv("VOLANTES_FECHA_FINAL", "")
