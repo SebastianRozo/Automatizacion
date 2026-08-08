@@ -1,8 +1,5 @@
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 import json
-import sys
-from pathlib import Path
 from app.config.settings import HEADLESS, PRINT_SCALE, PRINTER_NAME
 
 
@@ -13,11 +10,6 @@ LETTER_MEDIA_SIZE = {
     "is_default": True,
     "custom_display_name": "Carta",
 }
-
-
-def _resource_path(relative_path: str) -> Path:
-    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
-    return base_path / relative_path
 
 
 def _normalizar_escala_impresion(value: str) -> str:
@@ -61,6 +53,6 @@ def create_driver() -> webdriver.Chrome:
     if HEADLESS:
         options.add_argument("--headless=new")
 
-    chromedriver_path = _resource_path("app/browser/drivers/chromedriver.exe")
-    service = Service(executable_path=str(chromedriver_path))
-    return webdriver.Chrome(service=service, options=options)
+    # Selenium Manager detecta la version instalada de Chrome y obtiene el
+    # ChromeDriver compatible. No se debe fijar un driver dentro del .exe.
+    return webdriver.Chrome(options=options)
