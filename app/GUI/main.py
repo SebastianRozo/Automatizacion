@@ -42,12 +42,10 @@ OBSOLETE_ENV_KEYS = {
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
-    "PRINT_SCALE": "50",
+    "PRINT_SCALE": "65",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
 }
-
-PRINT_LAYOUT_VERSION = "2"
 
 REQUIRED_FIELDS = {
     "POLIEDRO_USERNAME": "Usuario Poliedro",
@@ -70,8 +68,6 @@ def read_env_file() -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
-    if values.get("PRINT_LAYOUT_VERSION") != PRINT_LAYOUT_VERSION:
-        values["PRINT_SCALE"] = "50"
     return values
 
 
@@ -79,7 +75,6 @@ def write_env_file(updated_values: dict[str, str]) -> None:
     existing = read_env_file()
     existing.update(updated_values)
     existing.pop("AUTOMATION_TOKEN", None)
-    existing["PRINT_LAYOUT_VERSION"] = PRINT_LAYOUT_VERSION
     for key in OBSOLETE_ENV_KEYS:
         existing.pop(key, None)
 
@@ -132,7 +127,7 @@ class PoliedroApp(ttk.Frame):
 
         self._add_entry(frame, "URL", "POLIEDRO_URL", 0)
         self._add_entry(frame, "Usuario", "POLIEDRO_USERNAME", 1)
-        self._add_entry(frame, "Contrasena", "POLIEDRO_PASSWORD", 2, show="*")
+        self._add_entry(frame, "Contrasena", "POLIEDRO_PASSWORD", 2)
         self._add_office_selector(frame, 3)
 
     def _build_tns_section(self, parent: ttk.Frame) -> None:
@@ -142,7 +137,7 @@ class PoliedroApp(ttk.Frame):
 
         self._add_entry(frame, "Oficina", "TNS_OFFICE", 0)
         self._add_entry(frame, "Usuario", "TNS_USERNAME", 1)
-        self._add_entry(frame, "Contrasena", "TNS_PASSWORD", 2, show="*")
+        self._add_entry(frame, "Contrasena", "TNS_PASSWORD", 2)
         self._add_path_entry(frame, "Portal TNS", "TNS_APP_PATH", 3)
 
     def _build_general_section(self) -> None:
@@ -168,7 +163,7 @@ class PoliedroApp(ttk.Frame):
         frame.columnconfigure(1, weight=1)
 
         ttk.Label(frame, text="Token").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        token_entry = ttk.Entry(frame, textvariable=self.token_var, show="*")
+        token_entry = ttk.Entry(frame, textvariable=self.token_var)
         token_entry.grid(row=0, column=1, sticky="ew", padx=(0, 12))
         token_entry.bind("<Return>", lambda _event: self.send_token())
 

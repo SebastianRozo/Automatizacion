@@ -1,3 +1,4 @@
+from collections import Counter
 from difflib import SequenceMatcher
 import unicodedata
 
@@ -16,11 +17,29 @@ def normalizar_texto_tns(texto: str) -> str:
     return " ".join(texto.upper().split())
 
 
+def falta_una_palabra(partes_volante: list[str], partes_tns: list[str]) -> bool:
+    if abs(len(partes_volante) - len(partes_tns)) != 1:
+        return False
+
+    nombre_corto, nombre_largo = sorted(
+        [partes_volante, partes_tns],
+        key=len,
+    )
+    return not (Counter(nombre_corto) - Counter(nombre_largo))
+
+
 def calcular_similitud_nombres(usuario_volante: str, usuario_tns: str) -> float:
     usuario_volante = normalizar_texto_tns(usuario_volante)
     usuario_tns = normalizar_texto_tns(usuario_tns)
     if not usuario_volante or not usuario_tns:
         return 0.0
+    if usuario_volante == usuario_tns:
+        return 100.0
+    partes_volante = usuario_volante.split()
+    partes_tns = usuario_tns.split()
+
+    if falta_una_palabra(partes_volante, partes_tns):
+        return 100.0
 
     if rapidfuzz_fuzz is not None:
         similitud_texto = float(rapidfuzz_fuzz.token_sort_ratio(usuario_volante, usuario_tns))
@@ -101,6 +120,7 @@ def obtener_variantes_busqueda_usuario(usuario: str) -> list[str]:
 
             agregar_variante([primera, primer_apellido])
             agregar_variante([primera, segundo_nombre, ultima])
+            agregar_variante([primera,primer_apellido,ultima])
             agregar_variante([ultima, primera, segundo_nombre])
 
         agregar_variante([*partes[-2:], *partes[:-2]])

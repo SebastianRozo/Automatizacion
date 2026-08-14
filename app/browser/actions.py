@@ -72,7 +72,14 @@ def capture_screenshot(driver, filename: str) -> None:
     if not screenshot_path.is_absolute():
         screenshot_path = CAPTURAS_DIR / screenshot_path
     screenshot_path.parent.mkdir(exist_ok=True, parents=True)
+    original_zoom = driver.execute_script(
+        "return document.documentElement.style.zoom || '';"
+    )
 
+    driver.execute_script(
+        "document.documentElement.style.zoom = '65%';"
+    )
+    time.sleep(2)
     original_size = driver.get_window_size()
     try:
         size = driver.execute_script(
@@ -98,3 +105,4 @@ def capture_screenshot(driver, filename: str) -> None:
         driver.save_screenshot(str(screenshot_path))
     finally:
         driver.set_window_size(original_size["width"], original_size["height"])
+        driver.execute_script(f"document.documentElement.style.zoom = '{original_zoom}';")

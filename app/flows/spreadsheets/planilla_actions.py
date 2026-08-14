@@ -1,6 +1,6 @@
 from urllib.parse import urljoin
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
@@ -238,14 +238,28 @@ def contar_portabilidades_restantes(
     return cantidad
 
 
-def seleccionar_primer_dia_mes(driver, start_date_id: str) -> None:
+def seleccionar_fecha_inicial_planilla(
+    driver,
+    start_date_id: str,
+    fecha_volante: str,
+) -> None:
+    fecha_final = datetime.strptime(fecha_volante, "%d/%m/%Y").date()
+    fecha_inicial = fecha_final - timedelta(days=10)
+    dia_inicial = str(fecha_inicial.day)
+
     click(driver, By.ID, start_date_id)
     time.sleep(1)
 
+    hoy = date.today()
+    meses_atras = (hoy.year - fecha_inicial.year) * 12 + hoy.month - fecha_inicial.month
+    for _ in range(max(meses_atras, 0)):
+        click(driver, By.CSS_SELECTOR, ".ajax__calendar_prev", timeout=5)
+        time.sleep(1)
+
     candidatos = [
-        "//td[normalize-space(.)='1' and not(contains(@class,'other')) and not(contains(@class,'disabled'))]",
-        "//a[normalize-space(.)='1']",
-        "//span[normalize-space(.)='1']",
+        f"//td[normalize-space(.)='{dia_inicial}' and not(contains(@class,'other')) and not(contains(@class,'disabled'))]",
+        f"//a[normalize-space(.)='{dia_inicial}']",
+        f"//span[normalize-space(.)='{dia_inicial}']",
     ]
 
     fin = time.time() + 10
@@ -262,7 +276,10 @@ def seleccionar_primer_dia_mes(driver, start_date_id: str) -> None:
                 return
         time.sleep(1)
 
-    raise TimeoutException("No fue posible seleccionar el dia 1 del calendario")
+    raise TimeoutException(
+        "No fue posible seleccionar la fecha inicial de la planilla: "
+        f"{fecha_inicial.strftime('%d/%m/%Y')}"
+    )
 
 
 def click_con_reintento(driver, by, value: str, intentos: int = 3) -> None:
@@ -319,6 +336,7 @@ def llenar_formulario_planillado(
     planilla: str,
     producto: str,
     start_date_id: str,
+    fecha_volante: str,
 ) -> None:
     time.sleep(FORM_READY_DELAY_SECONDS)
     WebDriverWait(driver, 20).until(
@@ -347,7 +365,7 @@ def llenar_formulario_planillado(
     time.sleep(FORM_READY_DELAY_SECONDS)
 
     time.sleep(2)
-    seleccionar_primer_dia_mes(driver, start_date_id)
+    seleccionar_fecha_inicial_planilla(driver, start_date_id, fecha_volante)
     time.sleep(2)
     click_con_reintento(driver, By.ID, BUTTON_CONFIRMAR_GENERACION)
     time.sleep(2)

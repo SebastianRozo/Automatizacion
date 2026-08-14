@@ -287,6 +287,7 @@ def generar_e_imprimir_planilla(
     guardar_captura_planilla_simulada(driver, datos_volante, producto)
 
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
+    capture_screenshot(driver, screenshot_name)
     time.sleep(espera)
     aplicar_configuracion_impresion(driver, ajustar_zoom=ajustar_zoom)
     for numero_copia in range(1, 4):
@@ -388,6 +389,7 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     planilla,
                     producto,
                     START_DATE,
+                    fecha_volante,
                 )
             except TimeoutException:
                 print("No aparecio completo el formulario de planillado. Reabriendo y reintentando...")
@@ -401,6 +403,7 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     planilla,
                     producto,
                     START_DATE,
+                    fecha_volante,
                 )
             try:
                 WebDriverWait(driver, 10).until(
@@ -459,7 +462,6 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             screenshot_name = (
                 f"tabla_planilla_{producto}_{datetime.today().strftime('%Y%m%d_%H%M%S')}.png"
             )
-            capture_screenshot(driver, screenshot_name)
             time.sleep(10)
             check_first_checkbox(driver)
             time.sleep(2)
