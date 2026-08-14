@@ -238,13 +238,13 @@ def _limpiar_parte_nombre_archivo(valor: object) -> str:
     return "_".join(texto.split()) or "sin_dato"
 
 
-def guardar_captura_planilla_simulada(
+def guardar_captura_planilla_generada(
     driver,
     datos_volante: dict | None,
     producto: str,
 ) -> None:
     if not datos_volante:
-        print("No se guardo captura simulada: faltan los datos del volante.")
+        print("No se guardo captura de la planilla generada: faltan los datos del volante.")
         return
 
     office_code = str(datos_volante.get("office_code", "")).strip()
@@ -261,13 +261,13 @@ def guardar_captura_planilla_simulada(
     usuario = datos_volante.get("codigo_usuario", datos_volante.get("usuario", ""))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = (
-        f"planilla_simulada_{_limpiar_parte_nombre_archivo(oficina)}_"
+        f"planilla_generada_{_limpiar_parte_nombre_archivo(oficina)}_"
         f"{_limpiar_parte_nombre_archivo(usuario)}_producto_"
         f"{_limpiar_parte_nombre_archivo(producto)}_{timestamp}.png"
     )
     screenshot_path = folder / filename
     capture_screenshot(driver, str(screenshot_path))
-    print(f"Captura de planilla simulada guardada en: {screenshot_path}")
+    print(f"Captura de planilla generada guardada en: {screenshot_path}")
 
 
 def generar_e_imprimir_planilla(
@@ -284,11 +284,9 @@ def generar_e_imprimir_planilla(
     valor_total = normalizar_dinero(total.text)
     valor_tarjeta_credito = obtener_valor_tarjeta_credito(driver)
     valor_para_volante = max(valor_total - valor_tarjeta_credito, 0)
-    guardar_captura_planilla_simulada(driver, datos_volante, producto)
-
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
-    capture_screenshot(driver, screenshot_name)
     time.sleep(espera)
+    guardar_captura_planilla_generada(driver, datos_volante, producto)
     aplicar_configuracion_impresion(driver, ajustar_zoom=ajustar_zoom)
     for numero_copia in range(1, 4):
         print(f"Enviando copia {numero_copia} de 3 a la impresora.")
@@ -459,9 +457,6 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 )
                 continue
 
-            screenshot_name = (
-                f"tabla_planilla_{producto}_{datetime.today().strftime('%Y%m%d_%H%M%S')}.png"
-            )
             time.sleep(10)
             check_first_checkbox(driver)
             time.sleep(2)
