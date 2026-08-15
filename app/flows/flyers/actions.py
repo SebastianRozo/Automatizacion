@@ -19,7 +19,7 @@ from app.config.selectors import (
     SELECT_OFFICE,
     SELECT_TYPE,
 )
-from app.config.settings import FORM_READY_DELAY_SECONDS
+from app.config.settings import FORM_READY_DELAY_SECONDS, PRINT_FLYERS
 from app.storage.main import get_office_folder
 from app.template.codes_places.main import OFFICES
 from app.flows.flyers.helpers import construir_datos_volante, obtener_fechas_consulta_volantes
@@ -158,9 +158,14 @@ def get_flyers(
 
                     volante_objetivo.click()
                     time.sleep(3)
-                    # Se deja desactivado el envio a impresion por ahora.
-                    click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
-                    time.sleep(2)
+                    if PRINT_FLYERS:
+                        click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
+                        time.sleep(2)
+                    else:
+                        print(
+                            "Impresion de volantes deshabilitada. "
+                            f"Se omite el volante {i + 1} de {office_name}."
+                        )
                     folder = get_office_folder(office_name, fecha_consulta)
                     capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{fecha_archivo}_{i}.png")
                     time.sleep(1)

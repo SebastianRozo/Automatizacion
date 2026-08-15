@@ -23,6 +23,7 @@ ENV_KEYS = [
     "TNS_APP_PATH",
     "PRINTER",
     "HEADLESS",
+    "PRINT_FLYERS",
     "PRINT_SCALE",
     "VOLANTES_FECHA_INICIAL",
     "VOLANTES_FECHA_FINAL",
@@ -42,6 +43,7 @@ OBSOLETE_ENV_KEYS = {
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
+    "PRINT_FLYERS": "true",
     "PRINT_SCALE": "80",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
@@ -93,6 +95,7 @@ class PoliedroApp(ttk.Frame):
         self.fields: dict[str, tk.StringVar] = {}
         self.office_vars: dict[str, tk.BooleanVar] = {}
         self.headless_var = tk.BooleanVar(value=False)
+        self.print_flyers_var = tk.BooleanVar(value=True)
         self.token_var = tk.StringVar()
 
         self.root.title("Automatizacion Poliedro")
@@ -151,6 +154,13 @@ class PoliedroApp(ttk.Frame):
 
         headless = ttk.Checkbutton(frame, text="HEADLESS", variable=self.headless_var)
         headless.grid(row=1, column=0, sticky="w", pady=(8, 0))
+
+        self.print_flyers_button = ttk.Button(
+            frame,
+            command=self._toggle_flyer_printing,
+        )
+        self.print_flyers_button.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self._update_print_flyers_button()
 
         self._add_entry(frame, "Timeout", "DEFAULT_TIMEOUT", 1, column=1, width=10)
         self._add_entry(frame, "Escala impresion", "PRINT_SCALE", 1, column=3, width=10)
@@ -285,10 +295,21 @@ class PoliedroApp(ttk.Frame):
         for key, var in self.fields.items():
             var.set(values.get(key, DEFAULTS.get(key, "")))
         self.headless_var.set(values.get("HEADLESS", "false").lower() == "true")
+        self.print_flyers_var.set(values.get("PRINT_FLYERS", "true").lower() == "true")
+        self._update_print_flyers_button()
+
+    def _toggle_flyer_printing(self) -> None:
+        self.print_flyers_var.set(not self.print_flyers_var.get())
+        self._update_print_flyers_button()
+
+    def _update_print_flyers_button(self) -> None:
+        estado = "ACTIVADA" if self.print_flyers_var.get() else "DESHABILITADA"
+        self.print_flyers_button.configure(text=f"Impresion de volantes: {estado}")
 
     def _collect_values(self) -> dict[str, str]:
         values = {key: var.get().strip() for key, var in self.fields.items()}
         values["HEADLESS"] = "true" if self.headless_var.get() else "false"
+        values["PRINT_FLYERS"] = "true" if self.print_flyers_var.get() else "false"
         return values
 
     def _validate(self, values: dict[str, str]) -> bool:
@@ -375,6 +396,7 @@ class PoliedroApp(ttk.Frame):
 
         self.status_var.set("Ejecutando")
         self.start_button.configure(state="disabled")
+        self.print_flyers_button.configure(state="disabled")
         self.send_token_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         threading.Thread(target=self._read_process_output, daemon=True).start()
@@ -449,6 +471,7 @@ class PoliedroApp(ttk.Frame):
             if message == "__PROCESS_DONE__":
                 self.status_var.set("Listo")
                 self.start_button.configure(state="normal")
+                self.print_flyers_button.configure(state="normal")
                 self.send_token_button.configure(state="disabled")
                 self.stop_button.configure(state="disabled")
                 continue

@@ -42,6 +42,7 @@ DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "10"))
 FORM_READY_DELAY_SECONDS = float(os.getenv("FORM_READY_DELAY_SECONDS", "4"))
 PRINTER_NAME = os.getenv("PRINTER", "")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
+PRINT_FLYERS = os.getenv("PRINT_FLYERS", "true").lower() == "true"
 PRINT_SCALE = os.getenv("PRINT_SCALE", "80")
 CAPTURAS_DIR = Path(
     os.getenv(

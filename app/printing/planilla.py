@@ -23,7 +23,8 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
         style.textContent = `
             @page {
                 size: letter portrait;
-                margin: 2mm;
+                /* Conserva el borde izquierdo y gana ancho solo a la derecha. */
+                margin: 12mm 1mm 2mm 2mm;
             }
 
             @media print {
@@ -65,6 +66,8 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
                     max-width: none !important;
                     margin-left: 0 !important;
                     margin-right: 0 !important;
+                    padding-left: 0 !important;
+                    padding-right: 0 !important;
                     overflow: visible !important;
                 }
 
@@ -74,6 +77,8 @@ def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
                     width: 100% !important;
                     min-width: 0 !important;
                     max-width: 100% !important;
+                    margin-left: 0 !important;
+                    margin-right: 0 !important;
                 }
 
                 table {
