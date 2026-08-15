@@ -159,7 +159,7 @@ def get_flyers(
                     volante_objetivo.click()
                     time.sleep(3)
                     # Se deja desactivado el envio a impresion por ahora.
-                   # click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
+                    click(driver, By.ID, BUTTON_SEND_PRINT_FLYERS)
                     time.sleep(2)
                     folder = get_office_folder(office_name, fecha_consulta)
                     capture_screenshot(driver, f"{folder}/screenshot_{office_name}_{fecha_archivo}_{i}.png")

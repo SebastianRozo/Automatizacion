@@ -42,6 +42,7 @@ from app.storage.spreadsheet_progress import (
 from app.storage.not_found_users import guardar_usuarios_no_encontrados
 from app.storage.main import get_office_folder
 from app.template.codes_places.main import OFFICES
+from app.printing.planilla import aplicar_configuracion_impresion, imprimir_copias
 
 
 POLIEDRO_KEEPALIVE_INTERVAL_SECONDS = 45
@@ -91,124 +92,17 @@ def obtener_valor_tarjeta_credito(driver) -> int:
         return 0
 
 
-def aplicar_configuracion_impresion(driver, ajustar_zoom: bool = False) -> None:
-    driver.execute_script(
-        """
-        const previous = document.getElementById('automatizacion-print-style');
-        if (previous) previous.remove();
-
-        const style = document.createElement('style');
-        style.id = 'automatizacion-print-style';
-        style.textContent = `
-            @page {
-                size: letter portrait;
-                margin: 5mm;
-            }
-
-            @media print {
-                html, body {
-                    width: 100% !important;
-                    min-width: 0 !important;
-                    max-width: none !important;
-                    height: auto !important;
-                    min-height: 0 !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    overflow: visible !important;
-                }
-
-                *, *::before, *::after {
-                    box-sizing: border-box !important;
-                }
-
-                body {
-                    background: #fff !important;
-                    color: #000 !important;
-                    font-size: 9pt !important;
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
-                }
-
-                .container,
-                .container-fluid,
-                .content,
-                .main-content,
-                form {
-                    width: 100% !important;
-                    min-width: 0 !important;
-                    max-width: none !important;
-                    margin-left: 0 !important;
-                    margin-right: 0 !important;
-                    overflow: visible !important;
-                }
-
-                table {
-                    width: 100% !important;
-                    min-width: 0 !important;
-                    max-width: 100% !important;
-                    border-collapse: collapse !important;
-                    table-layout: fixed !important;
-                    break-inside: auto;
-                    page-break-inside: auto;
-                }
-
-                thead {
-                    display: table-header-group;
-                }
-
-                tfoot {
-                    display: table-footer-group;
-                }
-
-                tr, img {
-                    break-inside: avoid !important;
-                    page-break-inside: avoid !important;
-                }
-
-                td, th {
-                    height: auto !important;
-                    padding: 2px 3px !important;
-                    line-height: 1.15 !important;
-                    white-space: normal !important;
-                    overflow: visible !important;
-                    overflow-wrap: anywhere;
-                    word-break: break-word !important;
-                    vertical-align: middle !important;
-                }
-
-                img, svg, canvas {
-                    max-width: 100% !important;
-                    height: auto !important;
-                }
-
-                button,
-                input[type='button'],
-                input[type='submit'],
-                .no-print {
-                    display: none !important;
-                }
-
-                html.automatizacion-print-compact body {
-                    font-size: 8.5pt !important;
-                }
-
-                html.automatizacion-print-compact table,
-                html.automatizacion-print-compact td,
-                html.automatizacion-print-compact th {
-                    font-size: 8pt !important;
-                    line-height: 1.1 !important;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-        document.documentElement.classList.toggle(
-            'automatizacion-print-compact',
-            Boolean(arguments[0])
-        );
-        window.scrollTo(0, 0);
-        """,
-        ajustar_zoom,
-    )
+def simular_planilla(driver, espera: int = 5) -> dict:
+    click(driver, By.ID, BUTTON_SIMULAR, timeout=10)
+    time.sleep(espera)
+    total = wait_present(driver, By.ID, VALOR_TOTAL_TABLA_PLANILLA, timeout=10)
+    valor_total = normalizar_dinero(total.text)
+    valor_tarjeta_credito = obtener_valor_tarjeta_credito(driver)
+    return {
+        "valor_total": valor_total,
+        "valor_tarjeta_credito": valor_tarjeta_credito,
+        "valor_para_volante": max(valor_total - valor_tarjeta_credito, 0),
+    }
 
 
 def obtener_saldo_pendiente_inicial(datos_volante: dict | None, dinero_volante: int) -> int:
@@ -276,30 +170,20 @@ def generar_e_imprimir_planilla(
     producto: str,
     espera: int = 5,
     ajustar_zoom: bool = False,
+    valores_planilla: dict | None = None,
 ) -> dict:
     enfocar_chrome(driver)
-    click(driver, By.ID, BUTTON_SIMULAR, timeout=10)
-    time.sleep(espera)
-    total = wait_present(driver, By.ID, VALOR_TOTAL_TABLA_PLANILLA, timeout=10)
-    valor_total = normalizar_dinero(total.text)
-    valor_tarjeta_credito = obtener_valor_tarjeta_credito(driver)
-    valor_para_volante = max(valor_total - valor_tarjeta_credito, 0)
+    if valores_planilla is None:
+        valores_planilla = simular_planilla(driver, espera=espera)
     click(driver, By.ID, BUTTON_GENERAR_PLANILLA, timeout=10)
     time.sleep(espera)
     guardar_captura_planilla_generada(driver, datos_volante, producto)
     aplicar_configuracion_impresion(driver, ajustar_zoom=ajustar_zoom)
-    for numero_copia in range(1, 4):
-        print(f"Enviando copia {numero_copia} de 3 a la impresora.")
-        driver.execute_script("window.print();")
-        time.sleep(3)
+    imprimir_copias(driver, copias=3)
     time.sleep(espera)
     click(driver, By.ID, BUTTON_CONTINUAR, timeout=10)
     time.sleep(espera)
-    return {
-        "valor_total": valor_total,
-        "valor_tarjeta_credito": valor_tarjeta_credito,
-        "valor_para_volante": valor_para_volante,
-    }
+    return valores_planilla
 
 def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=None):
     try:
@@ -609,20 +493,55 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     f"por {validacion['suma_planilla']} de {saldo_pendiente}"
                 )
 
-            if validacion["coincide"]  or todas_son_portabilidad:
+            valores_planilla = simular_planilla(driver)
+            while valores_planilla["valor_para_volante"] < saldo_pendiente:
+                porta_antigua = obtener_porta_antigua(
+                    driver,
+                    resultados_tns,
+                    fecha_volante,
+                )
+                if porta_antigua is None:
+                    break
+
+                if porta_antigua["checkbox"].is_selected():
+                    porta_antigua["checkbox"].click()
+                valores_planilla = simular_planilla(driver)
+                print(
+                    "Ajustando pago mixto con portabilidad. "
+                    f"Efectivo: {valores_planilla['valor_para_volante']}. "
+                    f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}. "
+                    f"Saldo pendiente: {saldo_pendiente}"
+                )
+
+            efectivo_coincide = (
+                valores_planilla["valor_para_volante"] == saldo_pendiente
+            )
+
+            if efectivo_coincide or todas_son_portabilidad:
                 valores_planilla = generar_e_imprimir_planilla(
                     driver,
                     datos_volante,
                     producto,
                     ajustar_zoom=True,
+                    valores_planilla=valores_planilla,
                 )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
+                saldo_pendiente -= valores_planilla["valor_para_volante"]
                 print(
                     f"Producto {producto}: generado {valores_planilla['valor_total']}. "
                     f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
-                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}."
+                    f"Valor aplicado al volante: {valores_planilla['valor_para_volante']}. "
+                    f"Saldo pendiente: {max(saldo_pendiente, 0)}"
                 )
                 #return ventana_tns
+            else:
+                print(
+                    f"Producto {producto}: el efectivo de la planilla no coincide con "
+                    f"el saldo del volante. Total planilla: {valores_planilla['valor_total']}. "
+                    f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}. "
+                    f"Efectivo: {valores_planilla['valor_para_volante']}. "
+                    f"Saldo pendiente: {saldo_pendiente}. No se genera planilla."
+                )
 
         return ventana_tns
 

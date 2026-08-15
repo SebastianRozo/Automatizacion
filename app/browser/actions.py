@@ -77,7 +77,7 @@ def capture_screenshot(driver, filename: str) -> None:
     )
 
     driver.execute_script(
-        "document.documentElement.style.zoom = '65%';"
+        "document.documentElement.style.zoom = '80%';"
     )
     time.sleep(2)
     original_size = driver.get_window_size()

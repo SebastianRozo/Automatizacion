@@ -42,7 +42,7 @@ OBSOLETE_ENV_KEYS = {
 DEFAULTS = {
     "POLIEDRO_URL": "https://poliedrodist.comcel.com.co/POL_LOGIN/login.aspx",
     "HEADLESS": "false",
-    "PRINT_SCALE": "65",
+    "PRINT_SCALE": "80",
     "DEFAULT_TIMEOUT": "10",
     "FORM_READY_DELAY_SECONDS": "4",
 }
@@ -343,7 +343,6 @@ class PoliedroApp(ttk.Frame):
         self._clear_logs()
         self._append_log("Configuracion guardada. Iniciando automatizacion...\n")
 
-        command = self._automation_command(selected_office_codes)
         env = os.environ.copy()
         env.update(values)
         if token:
@@ -356,6 +355,7 @@ class PoliedroApp(ttk.Frame):
         if os.name == "nt":
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
+        command = self._automation_command(selected_office_codes)
         try:
             self.process = subprocess.Popen(
                 command,
