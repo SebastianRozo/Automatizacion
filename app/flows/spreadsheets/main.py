@@ -105,6 +105,58 @@ def simular_planilla(driver, espera: int = 5) -> dict:
     }
 
 
+def seleccionar_facturas_solo_tarjeta_credito(
+    driver,
+    fecha_volante: str,
+) -> tuple[int, dict | None]:
+    facturas = obtener_filas_planilla(driver, fecha_volante)
+    check_first_checkbox(driver)
+
+    cantidad_aceptadas = 0
+    for indice, factura in enumerate(facturas):
+        checkbox = get_checkbox_por_usuario(
+            driver,
+            factura["usuario"],
+            factura.get("fecha_activacion"),
+        )
+        if checkbox is None:
+            print(
+                f"Factura {indice + 1} omitida: no se encontro su checkbox."
+            )
+            continue
+        if checkbox.is_selected():
+            checkbox.click()
+
+        valores = simular_planilla(driver, espera=2)
+        acumulado_es_solo_tarjeta = (
+            valores["valor_total"] > 0
+            and valores["valor_total"] == valores["valor_tarjeta_credito"]
+        )
+
+        if acumulado_es_solo_tarjeta:
+            cantidad_aceptadas += 1
+            print(
+                f"Factura {indice + 1} agregada: corresponde completamente "
+                "a tarjeta credito."
+            )
+            continue
+
+        checkbox = get_checkbox_por_usuario(
+            driver,
+            factura["usuario"],
+            factura.get("fecha_activacion"),
+        )
+        if checkbox is not None and not checkbox.is_selected():
+            checkbox.click()
+        print(f"Factura {indice + 1} descartada: contiene valor en efectivo.")
+
+    if cantidad_aceptadas == 0:
+        return 0, None
+
+    valores_finales = simular_planilla(driver, espera=2)
+    return cantidad_aceptadas, valores_finales
+
+
 def obtener_saldo_pendiente_inicial(datos_volante: dict | None, dinero_volante: int) -> int:
     valor_aplicado = obtener_valor_aplicado(datos_volante) if datos_volante else 0
     saldo_pendiente = max(dinero_volante - valor_aplicado, 0)
@@ -309,13 +361,10 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
             wait_present(driver, By.ID, TABLE_PLANILLA)
 
             if volante_en_cero:
-                valores_planilla = simular_planilla(driver, espera=2)
-                es_solo_tarjeta_credito = (
-                    valores_planilla["valor_total"] > 0
-                    and valores_planilla["valor_total"]
-                    == valores_planilla["valor_tarjeta_credito"]
+                cantidad_facturas_tc, valores_planilla = (
+                    seleccionar_facturas_solo_tarjeta_credito(driver, fecha_volante)
                 )
-                if es_solo_tarjeta_credito:
+                if valores_planilla is not None:
                     valores_planilla = generar_e_imprimir_planilla(
                         driver,
                         datos_volante,
@@ -326,16 +375,15 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     )
                     guardar_progreso_planilla(datos_volante, producto, valores_planilla)
                     print(
-                        f"Volante en 0: producto {producto} generado por tarjeta credito. "
+                        f"Volante en 0: producto {producto} generado con "
+                        f"{cantidad_facturas_tc} factura(s) de tarjeta credito. "
                         f"Total planilla: {valores_planilla['valor_total']}. "
                         f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}."
                     )
                 else:
                     print(
                         f"Volante en 0: producto {producto} no se genera porque "
-                        f"no corresponde completamente a tarjeta credito. "
-                        f"Total: {valores_planilla['valor_total']}. "
-                        f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}."
+                        "ninguna factura corresponde completamente a tarjeta credito."
                     )
 
                 continue
