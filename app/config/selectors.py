@@ -37,6 +37,10 @@ TABLE_PLANILLA = "cpContenido_WucFiltrosPlanilla_WucCargaInicialPlanilla_GrvRegi
 BUTTON_SIMULAR = "cpContenido_WucFiltrosPlanilla_BtnSimular"
 BUTTON_GENERAR_PLANILLA = "cpContenido_WucFiltrosPlanilla_BtnGenerarPlanilla"
 BUTTON_CONTINUAR = "cpContenido_WucFiltrosPlanilla_BtnContinuar"
+BUTTON_REGRESAR_SIMULACION = (
+    "//input[@value='Regresar'] | //button[normalize-space()='Regresar'] "
+    "| //a[normalize-space()='Regresar']"
+)
 
 BUTTON_CONSULTAR_PLANILLA = "a[href='ConsultarPlanilla.aspx']"
 SELECT_ASESOR="cpContenido_WucConsultarPlanilla_DdlCodActivacion"

@@ -12,6 +12,7 @@ from app.config.selectors import (
     BUTTON_CONTINUAR,
     BUTTON_GENERAR_PLANILLA,
     BUTTON_NOT_SPREADSHEET,
+    BUTTON_REGRESAR_SIMULACION,
     BUTTON_SIMULAR,
     SELECT_GENERATION_TYPE,
     SELECT_USER_NAME,
@@ -113,6 +114,8 @@ def seleccionar_facturas_solo_tarjeta_credito(
     check_first_checkbox(driver)
 
     cantidad_aceptadas = 0
+    valores_aceptados = None
+    indices_aceptados = set()
     for indice, factura in enumerate(facturas):
         checkbox = get_checkbox_por_usuario(
             driver,
@@ -135,26 +138,39 @@ def seleccionar_facturas_solo_tarjeta_credito(
 
         if acumulado_es_solo_tarjeta:
             cantidad_aceptadas += 1
+            valores_aceptados = valores
+            indices_aceptados.add(indice)
             print(
                 f"Factura {indice + 1} agregada: corresponde completamente "
                 "a tarjeta credito."
             )
-            continue
+            if indice == len(facturas) - 1:
+                return cantidad_aceptadas, valores_aceptados
+        else:
+            print(f"Factura {indice + 1} descartada: contiene valor en efectivo.")
 
-        checkbox = get_checkbox_por_usuario(
-            driver,
-            factura["usuario"],
-            factura.get("fecha_activacion"),
-        )
-        if checkbox is not None and not checkbox.is_selected():
-            checkbox.click()
-        print(f"Factura {indice + 1} descartada: contiene valor en efectivo.")
+        click(driver, By.XPATH, BUTTON_REGRESAR_SIMULACION, timeout=10)
+        wait_present(driver, By.ID, TABLE_PLANILLA, timeout=10)
+
+        # Regresar puede restaurar una selección anterior. Se reconstruye el
+        # estado para conservar solo las facturas TC ya aceptadas.
+        for indice_factura, factura_estado in enumerate(facturas):
+            checkbox_estado = get_checkbox_por_usuario(
+                driver,
+                factura_estado["usuario"],
+                factura_estado.get("fecha_activacion"),
+            )
+            if checkbox_estado is None:
+                continue
+            debe_quedar_tildada = indice_factura not in indices_aceptados
+            if checkbox_estado.is_selected() != debe_quedar_tildada:
+                checkbox_estado.click()
 
     if cantidad_aceptadas == 0:
         return 0, None
 
-    valores_finales = simular_planilla(driver, espera=2)
-    return cantidad_aceptadas, valores_finales
+    valores_aceptados = simular_planilla(driver, espera=2)
+    return cantidad_aceptadas, valores_aceptados
 
 
 def obtener_saldo_pendiente_inicial(datos_volante: dict | None, dinero_volante: int) -> int:
