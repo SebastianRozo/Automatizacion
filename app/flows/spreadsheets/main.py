@@ -308,20 +308,34 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
 
             wait_present(driver, By.ID, TABLE_PLANILLA)
 
-            if volante_en_cero:
-                valores_planilla = generar_e_imprimir_planilla(
-                    driver,
-                    datos_volante,
-                    producto,
-                    espera=2,
-                    ajustar_zoom=True,
-                )
-                guardar_progreso_planilla(datos_volante, producto, valores_planilla)
-                print(
-                    f"Volante en 0: producto {producto} generado por tarjeta credito. "
-                    f"Total planilla: {valores_planilla['valor_total']}. "
+            if volante_en_cero and valor:
+               valores_planilla = simular_planilla(driver, espera = 2)
+               es_solo_TC = (
+                valores_planilla['valor_total']>0 and valores_planilla['valor_total'] == valores_planilla['valor_tarjeta_credito']
+               )
+                if es_solo_TC:
+                    valores_planilla = generar_e_imprimir_planilla(
+                        driver,
+                        datos_volante,
+                        producto,
+                        espera=2,
+                        ajustar_zoom = True,
+                        valores_planilla = valores_planilla
+                    )
+                    guardar_progreso_planilla(datos_volante, producto, valores_planilla)
+                     print(
+                        f"Volante en 0: producto {producto} generado por tarjeta credito. "
+                        f"Total planilla: {valores_planilla['valor_total']}. "
+                        f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}."
+                    )
+                else:
+                    print(
+                    f"Volante en 0: producto {producto} no se genera porque "
+                    f"no corresponde completamente a tarjeta credito. "
+                    f"Total: {valores_planilla['valor_total']}. "
                     f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}."
                 )
+
                 continue
 
             if producto in {"3", "7"}:
@@ -423,6 +437,13 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     resultado["fecha_volante"] = fecha_volante
 
                 resultados_tns.append(resultado)
+
+                if resultado.get("tipo_plan") == "no_encontrado":
+                    print(
+                        "Usuario no encontrado en TNS. "
+                        f"Se omite la oficina y se sacara manual: {resultado.get('usuario')}"
+                    )
+                    break
 
                 if resultado["tipo_plan"] == "linea_nueva":
                     checkbox = get_checkbox_por_usuario(

@@ -132,12 +132,6 @@ def obtener_variantes_busqueda_usuario(usuario: str) -> list[str]:
         for parte in partes[:-2]:
             agregar_variante([parte])
 
-        for parte in partes:
-            if len(parte) >= 6:
-                agregar_variante([parte[:-1]])
-            if len(parte) >= 7:
-                agregar_variante([parte[:5]])
-
     return variantes
 
 
