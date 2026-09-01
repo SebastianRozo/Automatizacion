@@ -36,11 +36,11 @@ from app.flows.spreadsheets.planilla_actions import (
     validate_money,
 )
 from app.storage.spreadsheet_progress import (
-    obtener_productos_generados,
     obtener_valor_aplicado,
     registrar_planilla_generada,
 )
 from app.storage.not_found_users import guardar_usuarios_no_encontrados
+from app.storage.portabilidades import guardar_portas_faltantes
 from app.storage.main import get_office_folder
 from app.template.codes_places.main import OFFICES
 from app.printing.planilla import aplicar_configuracion_impresion, imprimir_copias
@@ -106,16 +106,31 @@ def simular_planilla(driver, espera: int = 5) -> dict:
     }
 
 
+def excluir_todas_las_facturas(driver) -> None:
+    tabla = driver.find_element(By.ID, TABLE_PLANILLA)
+    filas = tabla.find_elements(By.TAG_NAME, "tr")[1:]
+    for fila in filas:
+        checkboxes = fila.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+        if not checkboxes:
+            continue
+        checkbox = checkboxes[0]
+        if not checkbox.is_selected():
+            checkbox.click()
+
+
 def seleccionar_facturas_solo_tarjeta_credito(
     driver,
     fecha_volante: str,
+    saldo_pendiente: int,
+    facturas: list[dict] | None = None,
 ) -> tuple[int, dict | None]:
-    facturas = obtener_filas_planilla(driver, fecha_volante)
-    check_first_checkbox(driver)
+    if facturas is None:
+        facturas = obtener_filas_planilla(driver, fecha_volante)
 
-    cantidad_aceptadas = 0
-    valores_aceptados = None
-    indices_aceptados = set()
+    # Los checkbox marcados quedan excluidos de la planilla. Se normaliza el
+    # estado fila por fila porque la cabecera puede venir indeterminada.
+    excluir_todas_las_facturas(driver)
+
     for indice, factura in enumerate(facturas):
         checkbox = get_checkbox_por_usuario(
             driver,
@@ -131,46 +146,37 @@ def seleccionar_facturas_solo_tarjeta_credito(
             checkbox.click()
 
         valores = simular_planilla(driver, espera=2)
-        acumulado_es_solo_tarjeta = (
+        tiene_tarjeta_credito = (
             valores["valor_total"] > 0
-            and valores["valor_total"] == valores["valor_tarjeta_credito"]
+            and valores["valor_tarjeta_credito"] > 0
         )
+        efectivo_permitido = valores["valor_para_volante"] <= saldo_pendiente
 
-        if acumulado_es_solo_tarjeta:
-            cantidad_aceptadas += 1
-            valores_aceptados = valores
-            indices_aceptados.add(indice)
+        if tiene_tarjeta_credito and efectivo_permitido:
             print(
-                f"Factura {indice + 1} agregada: corresponde completamente "
-                "a tarjeta credito."
+                f"Factura {indice + 1} seleccionada individualmente: "
+                f"total {valores['valor_total']}, "
+                f"TC {valores['valor_tarjeta_credito']}, "
+                f"efectivo {valores['valor_para_volante']}."
             )
-            if indice == len(facturas) - 1:
-                return cantidad_aceptadas, valores_aceptados
+            return 1, valores
+        elif tiene_tarjeta_credito:
+            print(
+                f"Factura {indice + 1} descartada: su efectivo "
+                f"{valores['valor_para_volante']} supera el saldo pendiente "
+                f"{saldo_pendiente}."
+            )
         else:
-            print(f"Factura {indice + 1} descartada: contiene valor en efectivo.")
+            print(f"Factura {indice + 1} descartada: no contiene tarjeta credito.")
 
         click(driver, By.XPATH, BUTTON_REGRESAR_SIMULACION, timeout=10)
         wait_present(driver, By.ID, TABLE_PLANILLA, timeout=10)
 
-        # Regresar puede restaurar una selección anterior. Se reconstruye el
-        # estado para conservar solo las facturas TC ya aceptadas.
-        for indice_factura, factura_estado in enumerate(facturas):
-            checkbox_estado = get_checkbox_por_usuario(
-                driver,
-                factura_estado["usuario"],
-                factura_estado.get("fecha_activacion"),
-            )
-            if checkbox_estado is None:
-                continue
-            debe_quedar_tildada = indice_factura not in indices_aceptados
-            if checkbox_estado.is_selected() != debe_quedar_tildada:
-                checkbox_estado.click()
+        # Regresar puede restaurar la selección agrupada anterior. Se vuelven
+        # a excluir todas las filas antes de probar la siguiente factura.
+        excluir_todas_las_facturas(driver)
 
-    if cantidad_aceptadas == 0:
-        return 0, None
-
-    valores_aceptados = simular_planilla(driver, espera=2)
-    return cantidad_aceptadas, valores_aceptados
+    return 0, None
 
 
 def obtener_saldo_pendiente_inicial(datos_volante: dict | None, dinero_volante: int) -> int:
@@ -314,18 +320,9 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
         if dinero_volante is None:
             raise ValueError("Falta dinero del volante para validar la planilla")
         saldo_pendiente = obtener_saldo_pendiente_inicial(datos_volante, dinero_volante)
-        volante_en_cero = dinero_volante == 0
-        productos_generados = obtener_productos_generados(datos_volante) if datos_volante else set()
-        if productos_generados:
-            productos = [producto for producto in productos if producto not in productos_generados]
-            print(
-                "Productos ya generados para este volante, se omiten: "
-                f"{', '.join(sorted(productos_generados))}"
-            )
-
-        for producto in productos:
-            if saldo_pendiente <= 0 and not volante_en_cero:
-                return ventana_tns
+        productos_pendientes = list(productos)
+        while productos_pendientes:
+            producto = productos_pendientes.pop(0)
 
             enfocar_chrome(driver)
             print(f"Llenando formulario de planillado para producto {producto}")
@@ -376,9 +373,13 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
 
             wait_present(driver, By.ID, TABLE_PLANILLA)
 
-            if volante_en_cero:
-                cantidad_facturas_tc, valores_planilla = (
-                    seleccionar_facturas_solo_tarjeta_credito(driver, fecha_volante)
+            if saldo_pendiente <= 0:
+                _, valores_planilla = (
+                    seleccionar_facturas_solo_tarjeta_credito(
+                        driver,
+                        fecha_volante,
+                        saldo_pendiente,
+                    )
                 )
                 if valores_planilla is not None:
                     valores_planilla = generar_e_imprimir_planilla(
@@ -391,28 +392,76 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     )
                     guardar_progreso_planilla(datos_volante, producto, valores_planilla)
                     print(
-                        f"Volante en 0: producto {producto} generado con "
-                        f"{cantidad_facturas_tc} factura(s) de tarjeta credito. "
+                        f"Producto {producto} generado con una factura individual "
+                        "de tarjeta credito y sin efectivo. "
                         f"Total planilla: {valores_planilla['valor_total']}. "
                         f"Tarjeta credito: {valores_planilla['valor_tarjeta_credito']}."
                     )
+                    productos_pendientes.insert(0, producto)
                 else:
                     print(
-                        f"Volante en 0: producto {producto} no se genera porque "
-                        "ninguna factura corresponde completamente a tarjeta credito."
+                        f"Producto {producto}: no quedan facturas de tarjeta credito "
+                        "sin efectivo."
                     )
 
                 continue
 
             if producto in {"3", "7"}:
+                valores_planilla = simular_planilla(driver, espera=2)
+                if valores_planilla["valor_tarjeta_credito"] > 0:
+                    click(driver, By.XPATH, BUTTON_REGRESAR_SIMULACION, timeout=10)
+                    wait_present(driver, By.ID, TABLE_PLANILLA, timeout=10)
+                    seleccion_actual = validate_money(
+                        driver,
+                        saldo_pendiente,
+                        fecha_volante,
+                    )
+                    _, valores_tc = seleccionar_facturas_solo_tarjeta_credito(
+                        driver,
+                        fecha_volante,
+                        saldo_pendiente,
+                        seleccion_actual["filas_marcadas"],
+                    )
+                    if valores_tc is None:
+                        print(
+                            f"Producto {producto}: la simulacion contiene tarjeta "
+                            "credito, pero no fue posible aislar una venta valida."
+                        )
+                        continue
+
+                    valores_planilla = generar_e_imprimir_planilla(
+                        driver,
+                        datos_volante,
+                        producto,
+                        espera=2,
+                        valores_planilla=valores_tc,
+                    )
+                    guardar_progreso_planilla(datos_volante, producto, valores_planilla)
+                    saldo_pendiente = max(
+                        saldo_pendiente - valores_planilla["valor_para_volante"],
+                        0,
+                    )
+                    print(
+                        f"Producto {producto}: venta con tarjeta credito generada "
+                        f"individualmente. Efectivo aplicado: "
+                        f"{valores_planilla['valor_para_volante']}. "
+                        f"Saldo pendiente: {saldo_pendiente}."
+                    )
+                    productos_pendientes.insert(0, producto)
+                    continue
+
                 valores_planilla = generar_e_imprimir_planilla(
                     driver,
                     datos_volante,
                     producto,
                     espera=2,
+                    valores_planilla=valores_planilla,
                 )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
-                saldo_pendiente -= valores_planilla["valor_para_volante"]
+                saldo_pendiente = max(
+                    saldo_pendiente - valores_planilla["valor_para_volante"],
+                    0,
+                )
                 print(
                     f"Producto {producto}: generado {valores_planilla['valor_total']}. "
                     f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
@@ -600,6 +649,78 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     f"Saldo pendiente: {saldo_pendiente}"
                 )
 
+            if valores_planilla["valor_tarjeta_credito"] > 0:
+                print(
+                    "La seleccion normal contiene tarjeta credito. "
+                    "Se separara una venta para generar su planilla individual."
+                )
+                click(driver, By.XPATH, BUTTON_REGRESAR_SIMULACION, timeout=10)
+                wait_present(driver, By.ID, TABLE_PLANILLA, timeout=10)
+                seleccion_actual = validate_money(
+                    driver,
+                    saldo_pendiente,
+                    fecha_volante,
+                )
+                _, valores_tc = seleccionar_facturas_solo_tarjeta_credito(
+                    driver,
+                    fecha_volante,
+                    saldo_pendiente,
+                    seleccion_actual["filas_marcadas"],
+                )
+                if valores_tc is None:
+                    print(
+                        f"Producto {producto}: la simulacion contiene tarjeta "
+                        "credito, pero no fue posible aislar una venta valida."
+                    )
+                    continue
+
+                valores_tc = generar_e_imprimir_planilla(
+                    driver,
+                    datos_volante,
+                    producto,
+                    espera=2,
+                    ajustar_zoom=True,
+                    valores_planilla=valores_tc,
+                )
+                guardar_progreso_planilla(datos_volante, producto, valores_tc)
+                saldo_pendiente = max(
+                    saldo_pendiente - valores_tc["valor_para_volante"],
+                    0,
+                )
+                print(
+                    f"Producto {producto}: venta con tarjeta credito generada "
+                    f"individualmente. Tarjeta credito: "
+                    f"{valores_tc['valor_tarjeta_credito']}. "
+                    f"Efectivo aplicado al volante: "
+                    f"{valores_tc['valor_para_volante']}. "
+                    f"Saldo pendiente: {saldo_pendiente}."
+                )
+                productos_pendientes.insert(0, producto)
+                continue
+
+            cantidad_portas_faltantes = contar_portabilidades_restantes(
+                driver,
+                resultados_tns,
+                fecha_volante,
+            )
+            codigo_reporte = str(
+                datos_volante.get("office_code", "") if datos_volante else ""
+            ).strip()
+            oficina_reporte = next(
+                (
+                    oficina["name"]
+                    for oficina in OFFICES
+                    if oficina["office_code"] == codigo_reporte
+                ),
+                codigo_reporte or "SIN OFICINA",
+            )
+            guardar_portas_faltantes(
+                oficina_reporte,
+                codigo_reporte,
+                cantidad_portas_faltantes,
+                fecha_volante,
+            )
+
             efectivo_coincide = (
                 valores_planilla["valor_para_volante"] == saldo_pendiente
             )
@@ -613,7 +734,10 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                     valores_planilla=valores_planilla,
                 )
                 guardar_progreso_planilla(datos_volante, producto, valores_planilla)
-                saldo_pendiente -= valores_planilla["valor_para_volante"]
+                saldo_pendiente = max(
+                    saldo_pendiente - valores_planilla["valor_para_volante"],
+                    0,
+                )
                 print(
                     f"Producto {producto}: generado {valores_planilla['valor_total']}. "
                     f"Tarjeta credito aparte: {valores_planilla['valor_tarjeta_credito']}. "
