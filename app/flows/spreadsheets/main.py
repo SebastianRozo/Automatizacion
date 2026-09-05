@@ -597,9 +597,14 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
 
             enfocar_chrome(driver)
             validacion = validate_money(driver, saldo_pendiente, fecha_volante)
+            cantidad_portas_faltantes = contar_portabilidades_restantes(
+                driver,
+                resultados_tns,
+                fecha_volante,
+            )
             print(
                 "Portabilidades restantes: "
-                f"{contar_portabilidades_restantes(driver, resultados_tns, fecha_volante)}"
+                f"{cantidad_portas_faltantes}"
             )
             todas_son_portabilidad = (
                 resultados_tns
@@ -618,9 +623,14 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 if porta_antigua["checkbox"].is_selected():
                     porta_antigua["checkbox"].click()
                 validacion = validate_money(driver, saldo_pendiente, fecha_volante)
+                cantidad_portas_faltantes = contar_portabilidades_restantes(
+                    driver,
+                    resultados_tns,
+                    fecha_volante,
+                )
                 print(
                     "Portabilidades restantes: "
-                    f"{contar_portabilidades_restantes(driver, resultados_tns, fecha_volante)}"
+                    f"{cantidad_portas_faltantes}"
                 )
 
             if todas_son_portabilidad and not validacion["coincide"]:
@@ -631,16 +641,28 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
 
             valores_planilla = simular_planilla(driver)
             while valores_planilla["valor_para_volante"] < saldo_pendiente:
+                # Simular reemplaza la tabla inicial por WucCargaSimulada. Hay
+                # que regresar antes de buscar o modificar otra portabilidad.
+                click(driver, By.XPATH, BUTTON_REGRESAR_SIMULACION, timeout=10)
+                wait_present(driver, By.ID, TABLE_PLANILLA, timeout=10)
                 porta_antigua = obtener_porta_antigua(
                     driver,
                     resultados_tns,
                     fecha_volante,
                 )
                 if porta_antigua is None:
+                    # Dejamos nuevamente la pagina en la vista simulada, que es
+                    # donde estan los botones para generar la planilla.
+                    valores_planilla = simular_planilla(driver)
                     break
 
                 if porta_antigua["checkbox"].is_selected():
                     porta_antigua["checkbox"].click()
+                cantidad_portas_faltantes = contar_portabilidades_restantes(
+                    driver,
+                    resultados_tns,
+                    fecha_volante,
+                )
                 valores_planilla = simular_planilla(driver)
                 print(
                     "Ajustando pago mixto con portabilidad. "
@@ -698,11 +720,6 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
                 productos_pendientes.insert(0, producto)
                 continue
 
-            cantidad_portas_faltantes = contar_portabilidades_restantes(
-                driver,
-                resultados_tns,
-                fecha_volante,
-            )
             codigo_reporte = str(
                 datos_volante.get("office_code", "") if datos_volante else ""
             ).strip()
