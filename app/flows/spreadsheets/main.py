@@ -37,6 +37,7 @@ from app.flows.spreadsheets.planilla_actions import (
 )
 from app.storage.spreadsheet_progress import (
     obtener_valor_aplicado,
+    obtener_productos_generados,
     registrar_planilla_generada,
 )
 from app.storage.not_found_users import guardar_usuarios_no_encontrados
@@ -320,7 +321,10 @@ def go_to_spreadsheets(driver, datos_volante: dict | None = None, ventana_tns=No
         if dinero_volante is None:
             raise ValueError("Falta dinero del volante para validar la planilla")
         saldo_pendiente = obtener_saldo_pendiente_inicial(datos_volante, dinero_volante)
-        productos_pendientes = list(productos)
+        productos_ya_generados = obtener_productos_generados(datos_volante) if datos_volante else set()
+        if productos_ya_generados:
+            print(f"Reanudando volante. Productos ya generados omitidos: {productos_ya_generados}")
+        productos_pendientes = [p for p in productos if p not in productos_ya_generados]
         while productos_pendientes:
             producto = productos_pendientes.pop(0)
 

@@ -27,6 +27,7 @@ from app.flows.flyers.helpers import construir_datos_volante, obtener_fechas_con
 
 VOLANTES_INDEX_PATH = "/Recaudo.PS/VolantesNIT/Index"
 USUARIOS_VOLANTE_OMITIDOS_POR_OFICINA = {("01", "45096700"), ("02", "45096700")}
+ESPERA_RESULTADOS_VOLANTES_SEGUNDOS = 10
 
 
 def obtener_oficina_desde_formulario(driver) -> str:
@@ -59,6 +60,11 @@ def obtener_volantes_por_oficina(driver, codeplace, fecha_consulta):
         )
         time.sleep(FORM_READY_DELAY_SECONDS)
         click(driver, By.ID, BUTTON_FLYERS)
+        print(
+            "Consulta enviada. "
+            f"Esperando {ESPERA_RESULTADOS_VOLANTES_SEGUNDOS}s para cargar los volantes."
+        )
+        time.sleep(ESPERA_RESULTADOS_VOLANTES_SEGUNDOS)
     except Exception as e:
         raise Exception(f"Error al obtener los volantes: {e}") from e
 
@@ -90,12 +96,19 @@ def get_flyers(
             office_name = office["name"]
 
             for fecha_consulta in fechas_consulta:
+                print(
+                    f"INICIANDO CONSULTA DE OFICINA {office['office_code']} - "
+                    f"{office_name} PARA {fecha_consulta.strftime('%d/%m/%Y')}"
+                )
                 time.sleep(1)
                 obtener_volantes_por_oficina(driver, codeplace, fecha_consulta)
-                no_hay_volante = driver.find_elements(By.ID, "MessageSinReg")
+                no_hay_volante = any(
+                    mensaje.is_displayed()
+                    for mensaje in driver.find_elements(By.ID, "MessageSinReg")
+                )
                 if no_hay_volante:
                     print(
-                        f"NO HAY VOLANTES EN ESTA OFICINA PARA "
+                        f"NO HAY VOLANTES EN {office['office_code']} - {office_name} PARA "
                         f"{fecha_consulta.strftime('%d/%m/%Y')}"
                     )
                     continue
