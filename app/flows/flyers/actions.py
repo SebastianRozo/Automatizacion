@@ -27,7 +27,7 @@ from app.flows.flyers.helpers import construir_datos_volante, obtener_fechas_con
 
 VOLANTES_INDEX_PATH = "/Recaudo.PS/VolantesNIT/Index"
 USUARIOS_VOLANTE_OMITIDOS_POR_OFICINA = {("01", "45096700"), ("02", "45096700")}
-ESPERA_RESULTADOS_VOLANTES_SEGUNDOS = 10
+ESPERA_RESULTADOS_VOLANTES_SEGUNDOS = 7
 
 
 def obtener_oficina_desde_formulario(driver) -> str:
